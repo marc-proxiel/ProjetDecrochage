@@ -1,0 +1,124 @@
+# =============================================================================
+# pyproject.toml — Fichier de configuration central du projet Python "Decrochage"
+# -----------------------------------------------------------------------------
+# ROLE : c'est LA carte d'identite du projet. Un seul fichier qui regroupe :
+#   - comment construire/empaqueter le projet (section [build-system]) ;
+#   - les metadonnees (nom, version, version de Python requise) ;
+#   - la liste des dependances (bibliotheques necessaires) ;
+#   - la configuration des outils qualite (ruff, black, pytest).
+# C'est le standard moderne Python (remplace setup.py + plusieurs .cfg/.ini).
+# Format du fichier : TOML (commentaires avec # en debut ou fin de ligne).
+# Astuce : avec "uv", la commande `uv sync --extra dev` lit ce fichier
+#          pour installer toutes les dependances + le groupe "dev".
+# =============================================================================
+
+# --- [build-system] : comment "construire" (empaqueter) le projet -----------
+# Indique a pip/uv quel outil utiliser pour fabriquer le paquet installable.
+[build-system]
+# "hatchling" est le moteur de build (il transforme le code source en paquet).
+requires = ["hatchling"]
+# On precise explicitement le backend de build a appeler.
+build-backend = "hatchling.build"
+
+# --- [project] : metadonnees + dependances du projet ------------------------
+[project]
+# Nom du paquet (tel qu'il apparaitra une fois installe).
+name = "decrochage"
+# Version du projet (convention SemVer : MAJEUR.MINEUR.CORRECTIF).
+version = "0.1.0"
+# Courte description affichee, par exemple, sur un index de paquets.
+description = "Starter propre Decrochage pour le Sprint 3 CISIA"
+# Version de Python IMPOSEE : au minimum 3.13, mais strictement avant 3.14.
+# => Tout le monde doit travailler avec Python 3.13 (reproductibilite).
+requires-python = ">=3.13,<3.14"
+# Dependances de PRODUCTION : indispensables pour faire tourner le projet.
+dependencies = [
+    # pandas : manipulation de tableaux de donnees (DataFrame), lecture CSV/TSV.
+    "pandas>=2.2",
+    # numpy : calcul numerique rapide (tableaux, operations vectorielles).
+    "numpy>=2.0",
+    # scikit-learn : machine learning classique (entrainement de modeles, RF...).
+    "scikit-learn>=1.5",
+    # joblib : sauvegarde/chargement de modeles entraines (fichiers .joblib).
+    "joblib>=1.4",
+    # pydantic-settings : charge la configuration depuis l'environnement (.env).
+    "pydantic-settings>=2.3",
+    # typer : cree facilement une interface en ligne de commande (CLI).
+    "typer>=0.12",
+    # loguru : journalisation (logs) simple et lisible.
+    "loguru>=0.7",
+    "dvc>=3.67.1",
+    "fastapi>=0.111",  # API web rapide + doc /docs auto (module 25)
+    "uvicorn[standard]>=0.30",  # serveur ASGI qui fait tourner l'API (module 25)
+    "python-multipart>=0.0.9",  # upload de fichiers pour /predict-image (module 25)
+    "prometheus-fastapi-instrumentator>=8.0.2",  # expose /metrics pour Prometheus (module 33)
+    "prefect>=3.7.6",  # orchestration du flow ingest→predict→store (modules 29-30)
+    "sqlalchemy>=2.0.51",  # accès base de données / upsert (module 30)
+    "psycopg[binary]>=3.3.4",  # pilote PostgreSQL (module 28/30)
+    "scipy>=1.18.0",  # tests statistiques pour le drift : KS (module 31)
+    "evidently>=0.7.21",  # rapports de data drift (module 32)
+]
+
+# --- [project.optional-dependencies] : dependances OPTIONNELLES --------------
+# Groupes installables a la demande. Ici le groupe "dev" = outils de developpement
+# (non necessaires en production). On l'installe avec `uv sync --extra dev`.
+[project.optional-dependencies]
+dev = [
+    # pytest : framework pour ecrire et lancer les tests automatiques.
+    "pytest>=8.0",
+    # ruff : linter ultra-rapide (detecte erreurs/mauvaises pratiques de code).
+    "ruff>=0.5",
+    # black : formateur de code (met le code en forme automatiquement).
+    "black>=24.0",
+    # pre-commit : lance ruff/black/etc. AVANT chaque commit git.
+    "pre-commit>=3.7",
+    # matplotlib : figures du notebook final CISIA (EDA, courbes PR/ROC, diagnostic, drift).
+    "matplotlib>=3.10",
+]
+mlops = [
+    "dvc>=3.5",
+    "mlflow>=2.14",
+]
+
+# --- [project.scripts] : commande(s) en ligne de commande exposee(s) ---------
+# Cree une commande "decrochage" qui appelle la fonction main() du module CLI.
+# Apres installation, taper `decrochage` dans un terminal lancera ce point d'entree.
+[project.scripts]
+decrochage = "decrochage.cli:main"
+
+# --- [tool.hatch.build.targets.wheel] : ou trouver le code a empaqueter ------
+# Indique a hatchling que le code source du paquet se trouve dans src/decrochage.
+[tool.hatch.build.targets.wheel]
+packages = ["src/decrochage"]
+
+# --- [tool.ruff] : configuration du linter ruff -----------------------------
+[tool.ruff]
+# Largeur de ligne maximale toleree (au-dela : avertissement de style).
+line-length = 100
+# Version de Python ciblee pour les regles d'analyse (ici 3.13).
+target-version = "py313"
+# Dossiers a EXCLURE de l'analyse (environnements virtuels, dossiers de build).
+extend-exclude = [".venv*", "venv*", "dist", "build"]
+
+# --- [tool.ruff.lint] : quelles familles de regles ruff active-t-on ---------
+[tool.ruff.lint]
+# Regles activees :
+#   E = erreurs de style (pycodestyle), F = erreurs logiques (pyflakes),
+#   I = tri des imports (isort), UP = modernisation du code (pyupgrade),
+#   B = pieges courants (flake8-bugbear).
+select = ["E", "F", "I", "UP", "B"]
+# Regle volontairement IGNOREE : B008 (appel de fonction comme valeur par defaut),
+# car c'est un usage normal et recommande avec typer/FastAPI.
+ignore = ["B008"]
+
+# --- [tool.black] : configuration du formateur black ------------------------
+[tool.black]
+# Meme largeur de ligne que ruff (les deux outils restent coherents).
+line-length = 100
+
+# --- [tool.pytest.ini_options] : configuration des tests pytest -------------
+[tool.pytest.ini_options]
+# Dossier ou pytest cherchera les tests.
+testpaths = ["tests"]
+# Ajoute "src" au chemin d'import Python => les tests trouvent le code source.
+pythonpath = ["src"]

@@ -1,0 +1,71 @@
+# =============================================================================
+# .github/workflows/ci.yml — Pipeline d'Integration Continue (CI) GitHub Actions
+# -----------------------------------------------------------------------------
+# ROLE : decrit une suite de verifications automatiques executees par GitHub
+# a chaque "push" sur la branche main et a chaque "pull request". Si une etape
+# echoue (lint, format ou tests), la CI passe au ROUGE et previent l'equipe.
+# Objectif : empecher qu'un code casse ou mal formate ne soit fusionne.
+#
+# Ou ca s'execute : sur les serveurs de GitHub (machine virtuelle Ubuntu),
+# PAS sur votre poste. Vous voyez le resultat dans l'onglet "Actions" du depot.
+# Format du fichier : YAML (commentaires avec # en debut ou fin de ligne).
+# =============================================================================
+
+# Nom du workflow tel qu'affiche dans l'interface GitHub (onglet "Actions").
+name: CI
+
+# "on" = evenements qui DECLENCHENT le workflow.
+on:
+  # Declenche a chaque "push" (envoi de commits)...
+  push:
+    branches: [main]  # ...mais uniquement sur la branche "main".
+  # Declenche aussi a chaque "pull request" (proposition de fusion).
+  pull_request:
+
+# "jobs" = ensemble des taches a executer (ici un seul job : "quality").
+jobs:
+  quality:
+    # Type de machine virtuelle fournie par GitHub pour executer le job.
+    runs-on: ubuntu-latest
+    # "steps" = etapes executees dans l'ordre, de haut en bas.
+    steps:
+      # Etape 1 : recupere (clone) le code du depot sur la machine de la CI.
+      - uses: actions/checkout@v4
+      # Etape 2 : installe Python 3.13 (meme version que requires-python).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # Etape 3 : installe "uv" (gestionnaire de paquets/venv ultra-rapide).
+      - uses: astral-sh/setup-uv@v3
+      # Etape 4 : installe les dependances du projet + le groupe "dev".
+      - name: Install
+        run: uv sync --extra dev
+      # Etape 5 : LINT => verifie la qualite du code avec ruff.
+      - name: Lint
+        run: uv run ruff check .
+      # Etape 6 : FORMAT => verifie que le code respecte le style black.
+      # "--check" ne modifie rien : il echoue seulement si un fichier
+      # n'est pas correctement formate.
+      - name: Format
+        run: uv run black --check .
+      # Etape 7 : TESTS => lance la suite de tests avec pytest.
+      # "-q" (quiet) rend la sortie plus concise.
+      - name: Tests
+        run: uv run pytest -q
+      # Etape 8 : construit l'image Docker qui sera livree/deployee.
+      # On la tague avec le SHA du commit pour scanner exactement cette version.
+      - name: Build Docker image
+        run: docker build -t decrochage-api:${{ github.sha }} .
+      # Etape 9 : scan de securite de l'image finale avec Trivy.
+      # La CI echoue seulement sur les vulnerabilites HIGH/CRITICAL corrigeables.
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: decrochage-api:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          scanners: vuln
+          version: v0.72.0

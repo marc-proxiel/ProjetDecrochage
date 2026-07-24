@@ -1,0 +1,49 @@
+# =============================================================================
+#  FICHIER : .dockerignore
+#  RÔLE    : liste des fichiers/dossiers à NE PAS envoyer à Docker quand il
+#            construit l'image. C'est l'équivalent d'un .gitignore, mais pour
+#            le "contexte de build" Docker.
+#  MODULE  : 27 (conteneurisation / packaging de l'API).
+#
+#  POURQUOI C'EST IMPORTANT (notion de "contexte de build") :
+#    - Quand on lance `docker build .`, Docker prend TOUT le dossier courant (le
+#      "contexte") et l'envoie au moteur Docker AVANT de lire le Dockerfile.
+#    - Si on n'exclut rien, on enverrait des Go inutiles (caches, venv, données,
+#      historique Git...) -> build LENT, image potentiellement plus lourde, et
+#      RISQUE DE SÉCURITÉ (un .env avec des secrets pourrait fuiter dans l'image).
+#    - Conclusion : on garde un contexte MINIMAL = uniquement ce qui sert vraiment
+#      à construire l'application. Tout le reste est ignoré ici.
+#
+#  RÈGLES DE SYNTAXE :
+#    - Une entrée par ligne = un motif de fichiers/dossiers à EXCLURE.
+#    - '*' remplace n'importe quelle suite de caractères (dans un même niveau).
+#    - '**' traverse les sous-dossiers (récursif).
+#    - Un '!' au début = EXCEPTION = "ré-inclure" quelque chose qu'on avait exclu.
+#      L'ordre compte : une exception doit venir APRÈS l'exclusion qu'elle annule.
+# =============================================================================
+
+# .dockerignore — variante A (le modèle pré-entraîné est livré dans l'image)
+# Contexte de build minimal : on exclut le lourd/inutile, mais on GARDE artifacts/models.
+
+.git                      # Historique Git complet : inutile dans l'image et parfois volumineux.
+.github                   # Workflows CI/CD GitHub : servent au dépôt, pas à l'exécution de l'appli.
+.venv*                    # Environnement virtuel LOCAL (du PC du dev) : l'image recrée le sien, on l'exclut.
+venv*                     # Autre nom courant d'environnement virtuel local : même raison.
+__pycache__               # Caches de bytecode Python (.pyc générés) : régénérés tout seuls, inutiles ici.
+*.pyc                     # Fichiers de bytecode compilés individuels : idem, on ne les embarque pas.
+.pytest_cache             # Cache de la librairie de tests pytest : sert au dev, pas à la prod.
+.ruff_cache               # Cache du linter Ruff : sert au dev, pas à la prod.
+.env                      # SECRETS (mots de passe, clés d'API) : NE JAMAIS mettre dans l'image -> exclu.
+*.md                      # Fichiers Markdown (README, docs...) : documentation, inutile pour faire tourner l'API.
+tests                     # Code de tests : on ne déploie pas les tests en production -> image plus mince/sûre.
+data                      # Jeux de données (souvent lourds) : non nécessaires en variante A (modèle déjà entraîné).
+dist                      # Artefacts de build/packaging générés localement : reconstruits proprement par l'image.
+Makefile                  # Raccourcis de commandes pour le dev : pas utile à l'intérieur de l'image.
+.pre-commit-config.yaml   # Config des "hooks" pré-commit (qualité de code) : outil de dev uniquement.
+
+# Variante A : exclure artifacts/ en bloc SAUF le modèle livré (exception récursive).
+# (Variante B : retirer ces 3 lignes ET la ligne `data` ci-dessus pour entraîner dans l'image.)
+artifacts/*               # On exclut TOUT le contenu direct du dossier artifacts/ (souvent gros : runs, logs...).
+!artifacts/models         # EXCEPTION : on RÉ-INCLUT le dossier 'models' (il contient le modèle à embarquer).
+!artifacts/models/**      # EXCEPTION récursive : on ré-inclut aussi TOUS les fichiers/sous-dossiers DANS models/
+                          # (le '!' qui ré-inclut un dossier ne suffit pas toujours pour son contenu : on l'ajoute).

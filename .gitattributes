@@ -1,0 +1,33 @@
+# Normalisation des fins de ligne — évite les bugs PC/Mac/Linux
+# (un .sh enregistré en CRLF sous Windows ne s'exécute pas sous Mac/Linux).
+# NB : git ne gère PAS les commentaires en fin de ligne ici ; chaque
+#      commentaire doit être sur sa PROPRE ligne, sinon git affiche
+#      « warning: ... is not a valid attribute name ».
+
+# Par défaut : LF dans le dépôt, conversion automatique au checkout
+* text=auto eol=lf
+
+# Scripts shell : TOUJOURS en LF (Mac/Linux)
+*.sh    text eol=lf
+# PowerShell : CRLF (Windows)
+*.ps1   text eol=crlf
+# Batch / cmd : CRLF (Windows)
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Code Python et fichiers texte de config : LF
+*.py    text eol=lf
+*.toml  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+*.csv   text eol=lf
+*.tsv   text eol=lf
+
+# Fichiers binaires : jamais de conversion de fin de ligne
+*.joblib  binary
+*.png     binary
+*.jpg     binary
+*.pdf     binary
+*.zip     binary
+*.xlsx    binary

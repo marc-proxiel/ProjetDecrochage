@@ -1,0 +1,41 @@
+# =============================================================================
+# .pre-commit-config.yaml — Configuration des hooks "pre-commit"
+# -----------------------------------------------------------------------------
+# ROLE : definit des verifications automatiques (appelees "hooks") qui s'executent
+# JUSTE AVANT chaque "git commit". Si un hook echoue, le commit est bloque tant
+# que le probleme n'est pas corrige. Objectif : garder un code propre et sans
+# secret, sans avoir a y penser manuellement.
+#
+# Mise en place (a faire une fois) :
+#   1) installer l'outil :  uv sync --extra dev   (pre-commit est dans le groupe dev)
+#   2) activer les hooks  :  uv run pre-commit install
+# Ensuite, chaque commit declenche automatiquement les hooks ci-dessous.
+# On peut aussi tout lancer a la main : uv run pre-commit run --all-files
+#
+# Format du fichier : YAML (commentaires avec # en debut ou fin de ligne).
+# Note : chaque "rev" est une version FIGEE de l'outil (reproductibilite).
+# =============================================================================
+
+# "repos" = liste des depots externes fournissant des hooks.
+repos:
+  # --- Hook 1 : ruff (linter) -----------------------------------------------
+  # Verifie la qualite du code (erreurs, imports mal tries, mauvaises pratiques).
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9  # version exacte de ruff utilisee par le hook.
+    hooks:
+      - id: ruff
+        # --fix => ruff corrige AUTOMATIQUEMENT ce qu'il peut (imports, etc.).
+        args: [--fix]
+  # --- Hook 2 : black (formateur) -------------------------------------------
+  # Reformate le code selon un style unique et coherent pour toute l'equipe.
+  - repo: https://github.com/psf/black
+    rev: 24.8.0  # version exacte de black utilisee par le hook.
+    hooks:
+      - id: black
+  # --- Hook 3 : gitleaks (detecteur de secrets) -----------------------------
+  # Recherche des secrets (mots de passe, cles d'API, tokens) dans le code et
+  # bloque le commit s'il en trouve => evite de publier des informations sensibles.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4  # version exacte de gitleaks utilisee par le hook.
+    hooks:
+      - id: gitleaks

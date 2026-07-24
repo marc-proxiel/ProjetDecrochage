@@ -1,0 +1,32 @@
+# =============================================================================
+#  FICHIER : monitoring/prometheus.yml
+#  RÔLE    : configuration de Prometheus, l'outil qui SURVEILLE l'application en
+#            COLLECTANT régulièrement ses "métriques" (nombre de requêtes, temps
+#            de réponse, erreurs, etc.). C'est la base du monitoring/observabilité.
+#  MODULE  : 33-34 (monitoring / Prometheus).
+#
+#  COMMENT MARCHE PROMETHEUS (modèle "PULL") :
+#    - Prometheus ne PAS attend qu'on lui envoie des données : c'est LUI qui va les
+#      CHERCHER ("to scrape" = aspirer). À intervalle régulier, il appelle une URL
+#      spéciale de l'application (souvent /metrics) et lit les chiffres exposés.
+#    - C'est l'inverse d'un modèle "PUSH" où l'appli enverrait ses métriques.
+#      Avantage du PULL : Prometheus contrôle le rythme et sait si une cible ne
+#      répond plus (= panne détectée).
+#
+#  ⚠️ RAPPEL YAML : l'indentation (espaces) structure le fichier. On n'y touche
+#     pas. Ici on n'ajoute QUE des commentaires '#'.
+# =============================================================================
+
+global:                   # 'global' = réglages par défaut qui s'appliquent à TOUT Prometheus.
+  scrape_interval: 15s    # Fréquence de collecte par défaut : Prometheus va "aspirer" les
+                          #   métriques toutes les 15 secondes. Plus court = plus précis mais
+                          #   plus de charge ; plus long = moins fin mais plus léger.
+
+scrape_configs:           # 'scrape_configs' = la LISTE des cibles à surveiller (les "jobs").
+  - job_name: decrochage-api     # Nom logique de ce job de collecte (sert d'étiquette dans Prometheus).
+    metrics_path: /metrics      # CHEMIN de l'URL où l'appli expose ses métriques (ici .../metrics).
+                          #   Prometheus appellera donc http://<cible>/metrics pour lire les chiffres.
+    static_configs:             # Cibles définies "en dur" (liste fixe d'adresses, sans découverte auto).
+      - targets: ["api:8000"]   # CIBLE à interroger : le service 'api' sur le port 8000.
+                          #   'api' est résolu par le DNS interne de Docker Compose (nom du service)
+                          #   -> Prometheus scrape http://api:8000/metrics. C'est le modèle PULL en action.

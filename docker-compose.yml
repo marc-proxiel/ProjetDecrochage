@@ -1,0 +1,90 @@
+# =============================================================================
+#  FICHIER : docker-compose.yml
+#  RÔLE    : décrit et orchestre PLUSIEURS conteneurs qui forment l'application
+#            complète Decrochage, et la façon dont ils se parlent entre eux.
+#            Une seule commande (`docker compose up`) démarre tout l'ensemble.
+#  MODULE  : 28 (orchestration multi-conteneurs / Compose).
+#
+#  CE QU'ON ASSEMBLE ICI (4 services) :
+#    1) api        : notre API Decrochage (construite à partir du Dockerfile).
+#    2) db         : base de données PostgreSQL (stockage des données).
+#    3) prometheus : collecteur de métriques (surveille l'API) — modules 33/34.
+#    4) grafana    : tableaux de bord pour VISUALISER les métriques de Prometheus.
+#
+#  NOTIONS CLÉS POUR DÉBUTANT :
+#    - RÉSEAU INTERNE : Compose crée automatiquement un réseau privé où chaque
+#      service est joignable PAR SON NOM (DNS interne). Ex. l'API contacte la base
+#      via 'db:5432', et Prometheus contacte l'API via 'api:8000'. Pas besoin
+#      d'adresses IP : le nom du service suffit.
+#    - VARIABLES ${...} : remplacées au démarrage par les valeurs du fichier .env
+#      (à côté de ce compose). Ça évite d'écrire les secrets EN DUR dans le YAML.
+#    - VOLUME : espace de stockage qui SURVIT à la suppression d'un conteneur
+#      (ici 'pgdata' garde les données de la base même si on recrée le conteneur).
+#
+#  ⚠️ RAPPEL YAML : l'INDENTATION (espaces en début de ligne) définit la
+#     hiérarchie. On ne la modifie JAMAIS. Ici on n'ajoute que des commentaires '#'.
+# =============================================================================
+
+services:                 # 'services' = la liste de tous les conteneurs à lancer.
+
+  api:                    # --- SERVICE 1 : l'API Decrochage (notre application web) ---
+    build: .              # On CONSTRUIT l'image à partir du Dockerfile du dossier courant ('.').
+                          #   (au lieu de 'image:' qui irait télécharger une image toute prête).
+    ports: ["8000:8000"]  # Publication de port "HÔTE:CONTENEUR" : le 8000 de la machine est
+                          #   redirigé vers le 8000 du conteneur -> API accessible depuis le PC.
+    environment:          # Variables d'environnement passées DANS le conteneur api.
+      DECROCHAGE_API_KEY: ${DECROCHAGE_API_KEY}   # Clé d'API : valeur LUE depuis le .env (jamais en clair ici).
+      DECROCHAGE_DB_URL: postgresql+psycopg://decrochage:${POSTGRES_PASSWORD}@db:5432/decrochage
+                          # URL de connexion à la base, décortiquée :
+                          #   postgresql+psycopg:// = type de base + DRIVER (psycopg 3, celui du lock ;
+                          #     sans '+psycopg', SQLAlchemy chercherait psycopg2, absent) ; 'decrochage' = utilisateur ;
+                          #   ${POSTGRES_PASSWORD} = mot de passe (depuis .env) ;
+                          #   @db:5432 = on vise le SERVICE 'db' (DNS interne) sur le port PostgreSQL ;
+                          #   /decrochage = nom de la base de données à utiliser.
+    depends_on:           # Déclare une DÉPENDANCE : l'api a besoin de la base avant de démarrer.
+      db:                 #   ...dépend du service 'db'...
+        condition: service_healthy   # ...et on attend qu'il soit "SAIN" (healthcheck OK), pas juste démarré.
+                          #   -> évite que l'API tente de se connecter à une base pas encore prête.
+
+  db:                     # --- SERVICE 2 : la base de données PostgreSQL ---
+    image: postgres:16    # On utilise l'image officielle PostgreSQL version 16 (pas de build maison).
+    environment:          # Réglages d'initialisation de la base (lus par l'image postgres au 1er démarrage).
+      POSTGRES_USER: decrochage            # Crée l'utilisateur 'decrochage' (doit matcher l'URL de l'api).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # Mot de passe de cet utilisateur, fourni par le .env.
+      POSTGRES_DB: decrochage              # Crée une base nommée 'decrochage' au démarrage.
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+                          # Volume PERSISTANT : on relie le volume nommé 'pgdata' (défini tout en bas)
+                          #   au dossier où PostgreSQL stocke ses données. Ainsi, supprimer/recréer
+                          #   le conteneur ne PERD PAS les données -> persistance.
+    healthcheck:          # Examen de santé spécifique à la base (utilisé par le depends_on de l'api).
+      test: ["CMD-SHELL", "pg_isready -U decrochage"]
+                          # 'pg_isready' = outil PostgreSQL qui répond "prête à accepter des connexions ?".
+                          #   '-U decrochage' = on teste pour l'utilisateur decrochage.
+                          #   'CMD-SHELL' = la commande est exécutée via un shell.
+      interval: 5s        # On refait ce test toutes les 5 secondes.
+      retries: 5          # Après 5 échecs consécutifs, la base est considérée comme "unhealthy".
+
+  prometheus:             # --- SERVICE 3 : Prometheus, collecteur de métriques (monitoring) ---
+    image: prom/prometheus              # Image officielle Prometheus (prête à l'emploi).
+    ports: ["9090:9090"]                # Expose l'interface web de Prometheus sur le port 9090 du PC.
+    volumes: ["./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml"]
+                          # On MONTE notre fichier de config local (./monitoring/prometheus.yml) à
+                          #   l'emplacement attendu DANS le conteneur. Prometheus lira ainsi NOTRE
+                          #   configuration (quelles cibles surveiller, à quelle fréquence...).
+
+  grafana:                # --- SERVICE 4 : Grafana, tableaux de bord de visualisation ---
+    image: grafana/grafana              # Image officielle Grafana.
+    ports: ["3000:3000"]                # Interface web de Grafana accessible sur le port 3000 du PC.
+    depends_on: [prometheus]            # Grafana démarre APRÈS Prometheus (sa source de données).
+                          #   (ici simple ordre de démarrage, sans condition 'service_healthy').
+    environment:
+      GF_SECURITY_ADMIN_USER: admin            # identifiant admin Grafana (DEV)
+      GF_SECURITY_ADMIN_PASSWORD: admin        # mot de passe admin (DEV uniquement)
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+                          # Provisioning : Grafana lit ce dossier au démarrage et configure
+                          #   TOUT SEUL la source de données Prometheus (datasource.yml).
+
+volumes:                  # Déclaration des VOLUMES nommés réutilisables par les services ci-dessus.
+  pgdata: {}              # Volume 'pgdata' : Docker le gère pour nous ('{}' = options par défaut).
+                          #   C'est lui qui conserve durablement les données de PostgreSQL.

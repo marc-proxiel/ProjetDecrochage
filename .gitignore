@@ -1,0 +1,44 @@
+# =============================================================================
+# .gitignore — Liste des fichiers/dossiers que Git doit IGNORER
+# -----------------------------------------------------------------------------
+# ROLE : indique a Git ce qu'il ne faut PAS suivre ni envoyer dans le depot
+# (fichiers temporaires, environnements virtuels, caches, secrets...).
+# Cela garde le depot propre et leger, et evite de publier des donnees sensibles.
+#
+# RAPPEL UTILE : une ligne commencant par "!" est une EXCEPTION (whitelist) :
+# elle RE-AUTORISE un chemin qui serait autrement ignore. C'est ce mecanisme
+# qui permet, ici, de versionner volontairement le modele entraine.
+# Format : un motif par ligne ; commentaires avec # en debut de ligne.
+# =============================================================================
+
+# Environnements virtuels Python (crees localement, ne doivent pas etre versiones).
+.venv*/
+venv*/
+# Caches de bytecode Python (.pyc) generes automatiquement a l'execution.
+__pycache__/
+*.pyc
+# Caches d'outils : resultats intermediaires de pytest et de ruff.
+.pytest_cache/
+.ruff_cache/
+# Fichier de variables d'environnement REEL (peut contenir des secrets) : a NE PAS publier.
+.env
+# Artefacts de build/empaquetage (regeneres a partir du code source).
+dist/
+build/
+*.egg-info/
+# --- Exceptions (!) : on RE-AUTORISE certains fichiers du dossier modeles -----
+# Bien que d'autres elements soient ignores, on garde volontairement le dossier
+# artifacts/models/ et son contenu utile (fichier marqueur, modele, metadonnees),
+# afin que le modele entraine soit livre avec le projet.
+!artifacts/models/
+!artifacts/models/.gitkeep
+!artifacts/models/rf.joblib
+!artifacts/models/model_metadata.json
+
+# Artefacts de demo MLflow (regenerables) — ne pas committer
+mlruns/
+mlflow.db
+
+# base de démo du script Prefect (module 30)
+predictions.db
+predictions.html

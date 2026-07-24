@@ -1,0 +1,51 @@
+﻿student_id,annee_universitaire,filiere,age,sexe,bac_type,mention_bac,etablissement_origine,boursier,distance_domicile_km,heures_travail_remunere_sem,taux_presence_pct,connexions_lms_30j,heures_lms_total,ressources_consultees,retards_rendus,nb_devoirs_total,nb_devoirs_rendus,messages_forum,moyenne_partiels_s1,nb_ue_total,nb_ue_validees_s1,motivation,satisfaction,sentiment_appartenance,groupe_td,couleur_carte_etudiante,jour_inscription,id_dossier,date_inscription,moyenne_finale,abandon,commentaire_tuteur
+ETU-01185,2024-2025,STAPS,19,M,techno,B,lycee_public,oui,,15.0,76.2,25,38.5,49,4,10,8,2,7.51,5,2,1,,3,G,jaune,jeudi,493516,2024-09-19,12.29,0,En difficulté sur les évaluations.
+ETU-03448,2024-2025,Gestion,22,M,Generale,passable,lycee_public,N,6.9,24.0,73.7,32,63.4,94,6,11,10,5,11.34,6,0,4,,4,B,jaune,lundi,831230,16/09/2024,14.65,0,
+ETU-03808,2024-2025,biologie,20,F,GEN,ab,lycee_public,0,"61,8",0.0,61.4%,3,8.3,9,5,11,5,0,7.01,6,0,1,4,1,A,jaune,jeudi,566834,2024-09-19,2.31,1,Résultats fragiles aux partiels.
+ETU-03559,2024-2025,biologie,21,Femme,Général,P,lycee_prive,N,13.4,15.0,65.1%,17,28.5,33,6,10,6,2,13.84,6,6,3,3,,A,vert,lundi,153012,09/09/2024,14.07,0,
+ETU-04707,2024-2025,Gestion,20,M, pro,Bien,lycee_public,oui,"31,1",13.0,"85,0",29,29.9,78,3,8,6,3,9.24,6,3,4,2,1,A,jaune,vendredi,892440,20 Sep 2024,12.76,0,
+ETU-01353,2024-2025,Gestion,17,h,Generale,B,lycee_prive,1,4.6,7.0,97.1%,31,42.6,80,0,9,9,5,12.97,5,4,5,3,5,B,rouge,jeudi,988053,19/09/2024,18.27,0,Travail sérieux et régulier.
+ETU-02437,2024-2025,lettres,20,h,general,B,lycee_public,oui,43.4,19.0,62.4,,2.5,3,5,8,5,0,8.22,6,1,3,3,1,C,rouge,mercredi,718883,2024-09-25,3.4,1,Peu actif sur la plateforme.
+ETU-03209,2024-2025,Droit,22,M,Technologique,B,lycee_prive,N,9.1,0.0,75.8%,14,20.6,41,5,9,8,1,"9,12",6,3,3,2,2,E,jaune,lundi,193877,09 Sep 2024,13.61,0,Suivi sans particularité.
+ETU-03459,2024-2025,Droit,19,f,TECHNO,AB,cfa,non,"39,9",0.0,57.3%,13,13.8,29,6,12,6,0,8.38,6,3,2,1,1,C,gris,mardi,860577,24/09/2024,2.31,1,
+ETU-00785,2024-2025, Gestion ,20,M,GEN,passable,lycee_prive,Oui,56.0,12.0,"90,9",,61.3,63,0,11,9,7,15.5,7,5,5,5,3,F,jaune,mardi,588820,24 Sep 2024,18.21,0,
+ETU-01439,2024-2025,Gestion,19,H,Generale,,lycee_public,O,4.8,8.0,84.7,22,32.9,45,5,13,13,2,15.59,5,5,4,5,4,E,rouge,jeudi,117782,12/09/2024,17.7,0,"Bon semestre, résultats solides."
+ETU-03420,2024-2025,biologie,22,H,Generale,Assez Bien,,Non,17.0 km,15.0,"69,9",3,5.2,1,4,12,7,1,3.92,7,2,1,3,1,H,bleu,mercredi,318286,2024-09-18,2.22,1,En difficulté sur les évaluations.
+ETU-05185,2024-2025,Mathematiques,19,H,général ,Assez Bien,lycee_public,non,6.1,17.0,"89,4",65,91.8,154,0,10,10,13,13.84,5,5,4,5,5,F,rouge,mardi,950184,17 Sep 2024,19.58,0,
+ETU-00478,2024-2025,DROIT,20,H,TECHNO,Passable,lycee_public,N,4.2,10.0,64.8,17,19.1,57,4,11,8,1,11.68,6,4,2,,3,C,vert,mercredi,361326,2024-09-18,5.08,1,Semble peu engagé dans la formation.
+ETU-01664,2024-2025,Psychologie,24,f,general,AB,cfa,non,13.5,0.0,80.8,28,40.4,40,6,11,10,3,14.93,6,6,4,4,3,A,bleu,vendredi,761643,06/09/2024,17.35,0,Travail sérieux et régulier.
+ETU-01278,2024-2025,STAPS,23,F,techno,passable,lycee_prive,non,"6,6",0.0,57.1,8,12.1,7,5,8,5,1,9.73,6,5,3,,1,F,jaune,lundi,252613,2024-09-09,5.67,1,Peu actif sur la plateforme.
+ETU-01644,2024-2025,Psychologie,21,Homme,Generale,AB,lycee_public,O,0.8,11.0,"97,2",38,77.9,86,4,11,11,4,11.58,7,7,5,4,4,F,jaune,vendredi,255969,2024-09-27,18.8,0,
+ETU-02273,2024-2025,psychologie,21,M,Général,Assez Bien,lycee_public,N,6.0,19.0,77.3,28,32.6,87,4,10,7,2,"12,48",5,4,4,4,3,G,gris,mercredi,330005,25/09/2024,14.93,0,
+ETU-01810,2024-2025,Informatique,22,F,Général,passable,,oui,9.5,27.0,83.5,45,82.0,102,1,13,13,6,16.48,6,5,5,3,5,G,rouge,vendredi,826304,20/09/2024,19.56,0,
+ETU-00591,2024-2025, Psychologie ,17,H,Général,tres bien,lycee_public,non,2.7,12.0,75.5,20,39.5,51,4,9,6,0,"17,69",6,6,,3,3,E,gris,lundi,364681,2024-09-09,18.87,0,
+ETU-00593,2024-2025, Gestion ,24,Homme,Generale,,lycee_public,1,,0.0,"90,3",35,56.7,70,8,12,10,2,"11,98",6,6,2,5,,C,gris,mardi,286521,03/09/2024,16.29,0,Plusieurs travaux remis hors délai.
+ETU-03451,2024-2025,Droit,17,f,TECHNO,Passable,lycee_prive,non,"10,9",7.0,82.5,,85.0,114,4,8,7,6,10.76,6,4,2,,3,A,rouge,mardi,143458,10 Sep 2024,15.0,0,
+ETU-03996,2024-2025,gestion,18,Homme,general,AB,lycee_public,non,8.6,8.0,67.6,33,63.5,64,4,10,10,3,11.98,6,5,5,4,5,B,bleu,mardi,743713,2024-09-17,17.4,0,
+ETU-02609,2024-2025,STAPS,21,Femme,Général,tres bien,lycee_public,O,,27.0,"78,9",4,3.5,21,5,8,5,0,11.36,5,3,2,3,2,G,gris,mardi,580666,24 Sep 2024,6.92,1,
+ETU-01954,2024-2025,LETTRES,18,Homme,PRO,,lycee_public,1,3.1,0.0,"87,7",24,40.7,64,3,10,8,1,9.78,6,5,4,3,2,C,rouge,mardi,361375,24/09/2024,14.38,0,Suivi sans particularité.
+ETU-02961,2024-2025,LETTRES,20,f,techno,P,lycee_public,0,14.3,,97.9%,43,94.2,67,0,13,13,6,12.59,6,5,5,5,,C,bleu,mardi,167584,2024-09-03,18.28,0,Très actif sur la plateforme.
+ETU-01683,2024-2025,STAPS,18,Femme,GEN,passable,lycee_public,O,7.2,,93.6,15,29.2,30,4,10,9,3,11.53,6,6,4,,3,A,vert,jeudi,110392,26/09/2024,14.62,0,RAS.
+ETU-03182,2024-2025,Droit,18,h,Generale,Passable,lycee_public,Non,14.9,17.0,"97,9",33,75.5,101,4,9,9,2,11.9,7,6,4,5,2,B,bleu,mercredi,900763,2024-09-11,16.96,0,
+ETU-02927,2024-2025,Gestion,21,f,techno,Bien,cfa,N,9.2,3.0,"84,6",39,38.1,96,7,11,10,7,"7,18",6,4,3,3,4,G,vert,mardi,705065,10/09/2024,12.95,0,En difficulté sur les évaluations.
+ETU-00366,2024-2025, Psychologie ,23,Femme,general,Passable,cfa,oui,"9,6",,94.3,35,59.1,88,1,13,12,3,"8,24",5,4,4,2,5,H,bleu,jeudi,368429,19/09/2024,15.34,0,
+ETU-01966,2024-2025, STAPS ,21,femme,Général,Passable,autre,0,0.7,0.0,72.2,15,32.0,29,5,9,6,3,8.91,5,3,4,4,2,D,gris,mardi,961188,2024-09-17,4.35,1,Suivi sans particularité.
+ETU-04225,2024-2025,gestion,18,Femme,pro,B,lycee_prive,non,12.5,16.0,"77,8",31,52.1,72,5,9,5,2,"9,72",6,2,3,3,3,H,vert,vendredi,231338,2024-09-20,5.77,1,RAS.
+ETU-04962,2024-2025,DROIT,21,h,Général,tres bien,lycee_public,non,8.5 km,0.0,67.3,7,15.9,10,5,10,5,0,12.76,5,4,3,3,2,F,vert,jeudi,598532,05/09/2024,8.29,1,
+ETU-00092,2024-2025,Gestion,19,f,Generale,AB,lycee_public,Non,12.7,7.0,72.1,13,22.4,33,4,8,5,2,13.92,7,7,4,5,,E,vert,mercredi,358054,11 Sep 2024,16.61,0,RAS.
+ETU-04472,2024-2025,Psychologie,18,F,general,ab,lycee_public,non,5.9,10.0,70.0,29,56.3,51,5,8,7,4,8.38,7,4,2,3,3,D,vert,mercredi,132675,11/09/2024,12.96,0,
+ETU-02516,2024-2025, Lettres ,18,H,Professionnel,AB,lycee_public,N,1.9 km,,79.3,16,19.5,40,3,8,5,5,10.04,6,3,3,2,4,C,jaune,lundi,344042,09 Sep 2024,8.12,1,
+ETU-02602,2024-2025,Droit,23,f,TECHNO,Assez Bien,lycee_public,Oui,"28,1",,64.4,17,28.0,48,4,11,6,0,12.81,6,4,2,4,4,A,rouge,mardi,824228,2024-09-24,8.12,1,Semble peu engagé dans la formation.
+ETU-03976,2024-2025,Informatique,20,M,Général,passable,lycee_public,N,25.5,10.0,72.8,24,42.7,45,6,10,6,0,"10,73",6,3,2,3,2,H,rouge,mercredi,703357,2024-09-25,6.83,1,
+ETU-01348,2024-2025,informatique,18,F,TECHNO,Passable,lycee_public,0,11.5,0.0,"77,1",31,50.0,94,2,10,10,9,14.11,6,6,4,4,3,A,rouge,mardi,538414,2024-09-10,16.99,0,"Bon semestre, résultats solides."
+ETU-01999,2024-2025,BIOLOGIE,18,H,Général,Passable,cfa,Oui,16.3,8.0,66.6,30,12.2,85,5,8,5,2,12.39,6,6,1,2,3,A,jaune,jeudi,205791,2024-09-26,13.5,0,Semble peu engagé dans la formation.
+ETU-02137,2024-2025,GESTION,20,h,Général,Bien,lycee_public,non,"3,1",6.0,"67,9",27,75.2,54,6,10,6,1,9.82,6,4,3,2,2,H,vert,mercredi,755428,18/09/2024,14.13,0,
+ETU-00267,2024-2025,staps,20,h,TECHNO,tres bien,autre,O,,3.0,"57,7",11,24.2,44,1,11,9,1,"13,38",6,6,,2,2,E,gris,lundi,385436,2024-09-09,14.99,0,Peu actif sur la plateforme.
+ETU-00786,2024-2025,PSYCHOLOGIE,20,f,GEN,passable,lycee_prive,O,27.9,24.0,97.9,30,45.1,67,3,9,6,6,9.5,7,5,3,3,2,B,jaune,lundi,224036,02 Sep 2024,12.43,0,RAS.
+ETU-03667,2024-2025,informatique,20,femme,Technologique,Passable,lycee_prive,N,12.8,0.0,60.7,3,8.8,2,2,9,5,0,3.92,7,1,1,2,2,H,rouge,mercredi,550141,2024-09-11,2.24,1,Résultats fragiles aux partiels.
+ETU-01094,2024-2025,Biologie,20,H,Général,Bien,lycee_public,O,,0.0,72.3%,3,9.0,1,6,10,8,0,9.26,6,4,3,,2,H,vert,mercredi,263789,18 Sep 2024,4.38,1,Peu actif sur la plateforme.
+ETU-02371,2024-2025,Lettres,17,H,Generale,,lycee_public,O,"3,1",8.0,96.1,38,46.1,82,4,12,11,3,"14,14",6,6,3,,5,B,vert,vendredi,529646,13 Sep 2024,17.62,0,Étudiant assidu et investi.
+ETU-00849,2024-2025, Mathematiques ,18,Femme,PRO,passable,lycee_public,Non,11.6,11.0,79.2%,20,34.5,20,1,8,7,3,10.94,7,5,3,4,2,A,rouge,mardi,535948,17/09/2024,14.88,0,RAS.
+ETU-02494,2024-2025,Lettres,18,H,general,,lycee_public,N,4.6 km,4.0,87.0,23,36.9,52,7,13,11,3,8.25,7,4,4,4,2,A,rouge,lundi,417990,23/09/2024,13.58,0,
+ETU-00477,2024-2025,staps,22,Homme,général ,ab,lycee_prive,0,10.6,,72.2%,,6.6,7,3,11,7,0,9.2,6,3,2,4,2,E,rouge,lundi,844995,16 Sep 2024,3.33,1,
+ETU-01760,2024-2025,Droit,20,Homme,Technologique,Très Bien,lycee_prive,Non,32.3,,73.9,25,23.6,55,2,13,10,4,16.66,5,5,4,,4,G,rouge,lundi,722291,2024-09-23,18.04,0,Profil dans la moyenne.

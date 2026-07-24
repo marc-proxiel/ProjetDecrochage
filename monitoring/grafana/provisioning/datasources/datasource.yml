@@ -1,0 +1,9 @@
+# Provisioning Grafana : configure AUTOMATIQUEMENT la source de donnees au demarrage.
+# Grafana lit ce fichier (monte via docker-compose) et n'a donc rien a configurer a la main.
+apiVersion: 1
+datasources:
+  - name: Prometheus          # nom affiche dans Grafana
+    type: prometheus          # type de source
+    access: proxy             # Grafana interroge Prometheus cote serveur
+    url: http://prometheus:9090   # adresse du service 'prometheus' (DNS interne Compose)
+    isDefault: true           # source par defaut des nouveaux panels
