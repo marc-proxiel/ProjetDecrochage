@@ -29,19 +29,6 @@ uv run black --check .
 uv run decrochage --help
 ```
 
-### macOS / Linux
-
-```bash
-cd /chemin/vers/decrochage-sprint3-starter
-uv venv --python 3.13
-uv sync --extra dev
-uv run python --version
-uv run pytest -q
-uv run ruff check .
-uv run black --check .
-uv run decrochage --help
-```
-
 La commande `uv run python --version` doit afficher Python 3.13.x. C'est cette
 version qui fait foi, pas le `python --version` global de la machine.
 
@@ -54,7 +41,7 @@ uv run decrochage train
 uv run decrochage predict
 ```
 
-## Demarrer l'API (Sprint 3, J2)
+## Demarrer l'API 
 
 ```bash
 uv run uvicorn decrochage.api.main:app --reload
@@ -95,7 +82,7 @@ Reponse attendue : `{"machine_id":"MACH-07","proba_panne":0.06,"decision":"ok","
 
 Codes attendus : sans cle -> 401, corps trop gros -> 413, trop de requetes -> 429, donnees invalides -> 422.
 
-## Demarrer toute la stack avec Docker (Sprint 3, J3)
+## Demarrer toute la stack avec Docker 
 
 Prerequis : Docker installe (scripts `install_docker_windows.ps1` / `install_docker_macos.sh`) et Docker Desktop demarre.
 
@@ -144,15 +131,3 @@ data/raw/
 data/gold/
 artifacts/models/
 ```
-
-## Ce que les apprenants doivent retenir
-
-Le notebook sert a explorer. Le package sert a industrialiser.
-
-Le Sprint 3 commence quand le code est :
-
-- importable ;
-- testable ;
-- reproductible ;
-- lanceable par une CLI ;
-- protege contre les fuites de donnees temporelles.
