@@ -30,10 +30,11 @@ class Settings(BaseSettings):
     # --- Les réglages eux-mêmes (avec leur valeur par défaut) ----------------
     # Type annoté = garde-fou : si on passe "abc" à random_seed, pydantic refuse.
     data_dir: Path = Path("data/raw")  # dossier des données BRUTES (capteurs, incidents)
+    silver_dir: Path = Path("data/silver")  # dossier du dataset « silver » (analyser, transformé)
     gold_dir: Path = Path("data/gold")  # dossier du dataset « gold » (prêt à entraîner)
     model_dir: Path = Path("artifacts/models")  # dossier où l'on sauvegarde le modèle entraîné
     random_seed: int = 42  # graine aléatoire = résultats REPRODUCTIBLES
-    target_col: str = "panne"  # nom de la colonne à prédire (0 = OK, 1 = panne)
+    target_col: str = "abandon"  # nom de la colonne à prédire (0 = OK, 1 = abandon)
     incident_window_hours: int = 24  # fenêtre : on étiquette « panne » les 24 h AVANT un incident
     # --- Réglages de l'API (modules 25-26) ---
     # Clé attendue dans X-API-Key ; surcharger en prod via DECROCHAGE_API_KEY.

@@ -1,143 +1,193 @@
 # =============================================================================
 #  src/decrochage/cli.py  —  INTERFACE EN LIGNE DE COMMANDE (CLI)
 # -----------------------------------------------------------------------------
-#  Donne 4 commandes utilisables au terminal (grâce à la lib `typer`) :
-#     decrochage check-data   → vérifie/affiche un résumé santé des données
-#     decrochage build-gold   → fabrique et sauvegarde le dataset « gold »
-#     decrochage train        → entraîne le modèle + écrit ses métadonnées
-#     decrochage predict      → score la dernière mesure de chaque machine
+#  Commandes :
+#     decrochage check-data   -> resume sante des donnees brutes
+#     decrochage build-gold   -> fabrique et sauvegarde le dataset gold
+#     decrochage train        -> entraine le modele + ecrit ses metadonnees
+#     decrochage predict      -> score un CSV de nouvelles observations
 #
-#  Le nom `decrochage` est branché sur la fonction `main()` de ce fichier par
-#  `pyproject.toml` ([project.scripts] decrochage = "decrochage.cli:main").
-#  Ce fichier ne fait que de l'ORCHESTRATION : il appelle les fonctions des
-#  autres modules (loaders, temporal, tabular). Aucune logique ML dupliquée ici.
+#  Reproduit en script (donc reproductible/automatisable) la demarche menee
+#  dans EtudeDecrochageMVA.ipynb : fusion bronze, nettoyage silver, encodage
+#  gold, puis entrainement de la regression logistique retenue (voir
+#  decrochage.models.tabular pour le detail du modele).
+#
+#  NOTE : ce fichier remplace une version anterieure du starter (maintenance
+#  predictive industrielle) qui ne correspondait plus au cas d'usage actuel.
 # =============================================================================
-from __future__ import annotations  # annotations de type modernes (Path | None)
+from __future__ import annotations
 
-import json  # pour écrire les métadonnées du modèle en JSON
-from datetime import UTC, datetime  # horodatage en temps universel (UTC) — reproductible
-from pathlib import Path  # chemins de fichiers
+import json
+from datetime import UTC, datetime
+from pathlib import Path
 
-import pandas as pd  # tableaux
-import typer  # construit la CLI (commandes, options, --help)
-from loguru import logger  # logs lisibles
+import joblib
+import pandas as pd
+import typer
 
-from decrochage import __version__  # version du package (mise dans les métadonnées)
-from decrochage.config import settings  # réglages centraux (chemins, graine, cible…)
-
-# Fonctions de chargement / nettoyage des données :
-from decrochage.data.loaders import build_dataset, load_incidents, load_pressure, load_temperature
-from decrochage.features.temporal import (
-    add_temporal_features,  # fabrication des features lag/rolling
-)
-from decrochage.models.tabular import (  # utilitaires du modèle
-    load_model,
+from decrochage import __version__
+from decrochage.config import settings
+from decrochage.models.tabular import (
+    COLONNES_A_IMPUTER,
+    encoder_categorielles,
+    entrainer_et_evaluer,
+    fusionner_catalogue,
     predict_proba,
     save_model,
     select_features,
-    train_model,
 )
 
-# Objet « application » Typer : c'est lui qui regroupe toutes les commandes.
-app = typer.Typer(help="Decrochage Sprint 3 starter CLI")
+app = typer.Typer(help="Decrochage - CLI de detection precoce du decrochage etudiant")
+
+# Colonnes propres au fichier brut (identifiants, variables leurres, fuite
+# temporelle) : sans objet pour un appel API a la ligne, donc gardees ici
+# plutot que dans decrochage.models.tabular (partage avec l'API).
+COLONNES_A_SUPPRIMER = [
+    "student_id",
+    "id_dossier",
+    "annee_universitaire",
+    "groupe_td",
+    "couleur_carte_etudiante",
+    "jour_inscription",
+    "moyenne_partiels_s1",
+    "nb_ue_total",
+    "nb_ue_validees_s1",
+    "commentaire_tuteur",
+    "sexe",
+    "boursier",
+    "niveau",
+]
 
 
-def _load_gold(data_dir: Path) -> pd.DataFrame:
-    # Fonction PRIVÉE (préfixe `_`) qui rejoue tout le pipeline de données,
-    # réutilisée par plusieurs commandes pour éviter de dupliquer le code :
-    temp = load_temperature(data_dir / "capteurs_temperature.csv")  # 1) charge la température
-    pres = load_pressure(data_dir / "capteurs_pression.tsv")  # 2) charge la pression
-    inc = load_incidents(data_dir / "releves_incidents.csv")  # 3) charge les incidents
-    # 4) jointure capteurs + cible `panne` (fenêtre d'incident depuis la config)
-    dataset = build_dataset(temp, pres, inc, window_hours=settings.incident_window_hours)
-    # 5) ajoute les features temporelles, PUIS supprime les lignes à NaN
-    #    (les premières lignes de chaque machine, sans passé) et renumérote.
-    return add_temporal_features(dataset).dropna().reset_index(drop=True)
+def build_gold_dataset(raw_dir: Path) -> pd.DataFrame:
+    """Fusion bronze + nettoyage silver + encodage gold (voir le notebook)."""
+    df_etudiants = pd.read_csv(raw_dir / "dataset decrochage_etudiants_complet_V5.csv")
+    df_catalogue = pd.read_csv(raw_dir / "dataset catalogue_formations_V5.csv")
+
+    df = fusionner_catalogue(df_etudiants, df_catalogue)
+    df = df.drop(columns=[c for c in COLONNES_A_SUPPRIMER if c in df.columns])
+
+    df["date_inscription"] = pd.to_datetime(
+        df["date_inscription"], format="mixed", dayfirst=True
+    ).dt.strftime("%d-%m-%Y")
+
+    for col in ["distance_domicile_km", "taux_presence_pct"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace("km", "", regex=False)
+            .str.replace("%", "", regex=False)
+            .str.strip()
+            .str.replace(",", ".", regex=False)
+            .astype(float)
+        )
+
+    df = df.drop_duplicates().reset_index(drop=True)
+    df = encoder_categorielles(df)
+
+    if (df["nb_devoirs_rendus"] / df["nb_devoirs_total"]).max() < 1:
+        df["taux_rendu"] = df["nb_devoirs_rendus"] / df["nb_devoirs_total"]
+        df = df.drop(columns=["nb_devoirs_rendus"])
+    df = df.drop(columns=["nb_devoirs_total"])
+
+    return df
 
 
-@app.command()  # ce décorateur transforme la fonction en commande `decrochage check-data`
-def check_data(data_dir: Path | None = None) -> None:
-    """Load sample sources and print a short health summary."""
-    data_dir = data_dir or settings.data_dir  # si non précisé, prend le dossier par défaut
-    dataset = _load_gold(data_dir)  # rejoue le pipeline complet
-    typer.echo(f"rows={len(dataset)}")  # nombre de lignes obtenues
-    typer.echo(f"machines={dataset['machine'].nunique()}")  # nombre de machines distinctes
-    typer.echo(
-        f"panne_rate={dataset[settings.target_col].mean():.4f}"
-    )  # taux de pannes (moyenne de 0/1)
+@app.command()
+def check_data(data_dir: Path = settings.data_dir) -> None:
+    """Charge les sources brutes et affiche un resume sante (shape, nulls)."""
+    noms = ["dataset decrochage_etudiants_complet_V5.csv", "dataset catalogue_formations_V5.csv"]
+    for nom in noms:
+        df = pd.read_csv(data_dir / nom)
+        typer.echo(f"\n{nom} : {df.shape[0]} lignes x {df.shape[1]} colonnes")
+        nulls = df.isna().sum()
+        nulls = nulls[nulls > 0]
+        if nulls.empty:
+            typer.echo("  aucune valeur manquante")
+        else:
+            typer.echo(f"  valeurs manquantes :\n{nulls.to_string()}")
 
 
-@app.command()  # → commande `decrochage build-gold`
-def build_gold(data_dir: Path | None = None, out: Path | None = None) -> None:
-    """Build and save the gold dataset from raw Decrochage sources."""
-    data_dir = data_dir or settings.data_dir  # dossier source (défaut: data/raw)
-    out = out or settings.gold_dir / "gold_dataset.csv"  # fichier de sortie (défaut: data/gold/…)
-    dataset = _load_gold(data_dir)  # construit le dataset « gold »
-    out.parent.mkdir(parents=True, exist_ok=True)  # crée le dossier de sortie si besoin
-    dataset.to_csv(out, index=False)  # écrit le CSV (sans la colonne d'index)
-    logger.info("Gold dataset written: {} rows -> {}", len(dataset), out)  # trace l'opération
+@app.command()
+def build_gold(
+    data_dir: Path = settings.data_dir,
+    gold_dir: Path = settings.gold_dir,
+) -> None:
+    """Fabrique et sauvegarde le dataset gold a partir des sources brutes."""
+    gold_dir.mkdir(parents=True, exist_ok=True)
+    df_gold = build_gold_dataset(data_dir)
+    out_path = gold_dir / "gold-dataset.csv"
+    df_gold.to_csv(out_path, index=False, sep=";")
+    typer.echo(f"gold -> {out_path} ({df_gold.shape[0]} lignes, {df_gold.shape[1]} colonnes)")
 
 
-@app.command()  # → commande `decrochage train`
-def train(data_dir: Path | None = None, out: Path | None = None) -> None:
-    """Train the baseline RandomForest model on sample data."""
-    data_dir = data_dir or settings.data_dir  # dossier source
-    out = out or settings.model_dir / "rf.joblib"  # où sauver le modèle (défaut: artifacts/…)
-    dataset = _load_gold(data_dir)  # données prêtes
-    x = select_features(dataset, settings.target_col)  # X = features (sans machine/timestamp/cible)
-    y = dataset[settings.target_col]  # y = la cible `panne`
-    model = train_model(
-        x, y, random_state=settings.random_seed
-    )  # entraîne (graine = reproductible)
-    save_model(model, out)  # sauvegarde le modèle sur disque
+@app.command()
+def train(
+    gold_dir: Path = settings.gold_dir,
+    model_dir: Path = settings.model_dir,
+    test_size: float = 0.2,
+    seed: int = settings.random_seed,
+) -> None:
+    """Entraine le modele retenu (regression logistique) et sauvegarde ses metadonnees."""
+    gold_path = gold_dir / "gold-dataset.csv"
+    if not gold_path.exists():
+        raise typer.BadParameter(
+            f"Gold introuvable : {gold_path}. Lance `decrochage build-gold` d'abord."
+        )
+    df = pd.read_csv(gold_path, sep=";")
 
-    # MÉTADONNÉES = « carte d'identité » du modèle : indispensable pour la traçabilité.
-    # On note QUAND, avec QUELLE version, QUELLE graine, QUELLES features, COMBIEN de
-    # lignes et QUEL taux de panne le modèle a été entraîné → reproductibilité & audit.
+    model, imputer, metrics, feature_columns = entrainer_et_evaluer(
+        df,
+        target_col=settings.target_col,
+        test_size=test_size,
+        threshold=settings.decision_threshold,
+        random_state=seed,
+    )
+    typer.echo(f"metrics (test) : {metrics}")
+
+    model_path = model_dir / "logistic.joblib"
+    save_model(model, model_path)
+    joblib.dump(imputer, model_dir / "imputer.joblib")
+
     metadata = {
-        "created_at": datetime.now(UTC).isoformat(),  # date/heure UTC de l'entraînement
-        "package_version": __version__,  # version du package decrochage
-        "random_seed": settings.random_seed,  # graine utilisée
-        "target_col": settings.target_col,  # nom de la cible
-        "features": list(x.columns),  # liste exacte des features (ordre compris)
-        "n_train_rows": int(len(dataset)),  # nombre de lignes d'entraînement
-        "panne_rate": round(float(y.mean()), 4),  # proportion de pannes dans les données
-        "dataset": str(data_dir),  # d'où venaient les données
+        "created_at": datetime.now(UTC).isoformat(),
+        "package_version": __version__,
+        "random_seed": seed,
+        "target_col": settings.target_col,
+        "features": feature_columns,
+        "metrics_holdout": metrics,
     }
-    metadata_path = out.parent / "model_metadata.json"  # à côté du modèle
-    metadata_path.write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8"
-    )  # écrit le JSON lisible
-    logger.info("Model trained on {} rows -> {}", len(dataset), out)
-    logger.info("Metadata -> {}", metadata_path)
+    (model_dir / "model_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    typer.echo(f"modele -> {model_path}")
 
 
-@app.command()  # → commande `decrochage predict`
-def predict(data_dir: Path | None = None, model_path: Path | None = None) -> None:
-    """Score the latest observation per machine."""
-    data_dir = data_dir or settings.data_dir  # dossier source
-    model_path = model_path or settings.model_dir / "rf.joblib"  # modèle à charger
-    if not model_path.exists():  # garde-fou : modèle absent ?
-        # Message d'erreur ACTIONNABLE : on dit quoi faire (lancer `train` d'abord).
+@app.command()
+def predict(features_csv: Path) -> None:
+    """Score chaque ligne d'un CSV de features (meme colonnes que le gold, sans la cible)."""
+    from decrochage.models.tabular import load_model
+
+    model_path = settings.model_dir / "logistic.joblib"
+    imputer_path = settings.model_dir / "imputer.joblib"
+    if not model_path.exists():
         raise typer.BadParameter(f"Model not found: {model_path}. Run `decrochage train` first.")
+    model = load_model(model_path)
 
-    # On ne score que la DERNIÈRE mesure de chaque machine (`groupby(machine).tail(1)`)
-    # = l'état le plus récent, ce qui intéresse la maintenance « ici et maintenant ».
-    dataset = _load_gold(data_dir).groupby("machine").tail(1)
-    model = load_model(model_path)  # recharge le modèle entraîné
-    scores = predict_proba(model, select_features(dataset, settings.target_col))  # proba de panne
-    # Affiche, machine par machine, la probabilité de panne (3 décimales).
-    # `strict=False` : tolère que les deux séries n'aient pas exactement la même longueur.
-    for machine, score in zip(dataset["machine"], scores, strict=False):
-        typer.echo(f"{machine}: P(panne)={score:.3f}")
+    df = pd.read_csv(features_csv, sep=";")
+    if imputer_path.exists():
+        imputer = joblib.load(imputer_path)
+        df[COLONNES_A_IMPUTER] = imputer.transform(df[COLONNES_A_IMPUTER])
+    X = select_features(df, settings.target_col)
+    proba = predict_proba(model, X)
+    for i, p in enumerate(proba):
+        decision = "a_risque" if p >= settings.decision_threshold else "ok"
+        typer.echo(f"ligne {i} : proba_abandon={p:.3f} -> {decision}")
 
 
 def main() -> None:
-    # Point d'entrée appelé par la commande `decrochage` (cf. pyproject.toml).
     app()
 
 
-# Si on exécute ce fichier directement (`python -m decrochage.cli` ou python cli.py),
-# Python met __name__ == "__main__" → on lance la CLI. (Import simple : ne lance rien.)
+# Si on execute ce fichier directement (`python -m decrochage.cli` ou python cli.py),
+# on lance aussi la CLI (pratique pour deboguer sans passer par l'entry point installe).
 if __name__ == "__main__":
     main()

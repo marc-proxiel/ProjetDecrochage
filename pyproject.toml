@@ -74,6 +74,10 @@ dev = [
     "pre-commit>=3.7",
     # matplotlib : figures du notebook final CISIA (EDA, courbes PR/ROC, diagnostic, drift).
     "matplotlib>=3.10",
+    # shap : explicabilite des modeles (valeurs de Shapley, diagrammes beeswarm/waterfall).
+    "shap>=0.46",
+    # numba : force une version compatible Python 3.13 (evite qu'uv resolve un vieux llvmlite).
+    "numba>=0.61",
 ]
 mlops = [
     "dvc>=3.5",

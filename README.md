@@ -51,7 +51,7 @@ Puis ouvrir la doc interactive : http://localhost:8000/docs
 
 - `GET /health` : 200 (le serveur est vivant) ;
 - `GET /ready`  : 200 si le modele est charge, sinon 503 ;
-- `POST /predict-tabular` : prediction de panne (cle API requise).
+- `POST /predict-tabular` : probabilite de decrochage d'un etudiant (cle API requise).
 
 Exemple d'appel (la cle de demonstration est `dev-key`) :
 
@@ -78,7 +78,7 @@ curl.exe -X POST http://localhost:8000/predict-tabular -H "X-API-Key: dev-key" -
 
 Le plus simple, sans aucune syntaxe : ouvrir http://localhost:8000/docs , deplier `POST /predict-tabular`, cliquer **Try it out**, renseigner `X-API-Key = dev-key`, coller le contenu de `payload.json` et **Execute**.
 
-Reponse attendue : `{"machine_id":"MACH-07","proba_panne":0.06,"decision":"ok","model_version":"0.1.0","threshold":0.5}`
+Reponse attendue : `{"proba_abandon":0.0556,"decision":"ok","model_version":"0.1.0","threshold":0.5}`
 
 Codes attendus : sans cle -> 401, corps trop gros -> 413, trop de requetes -> 429, donnees invalides -> 422.
 
@@ -114,8 +114,6 @@ Arret : `docker compose down` (ajouter `-v` pour effacer aussi la base). Raccour
 src/decrochage/
   config.py
   cli.py
-  data/loaders.py
-  features/temporal.py
   models/tabular.py
   api/              # Sprint 3 / J2 : l'API FastAPI
     main.py         #   routes : /health /ready /predict-tabular /predict-image /metrics
@@ -126,8 +124,8 @@ tests/              # dont test_api.py et test_security.py (J2)
 Dockerfile          # J3 : image multi-stage, non-root
 docker-compose.yml  # J3 : api + PostgreSQL + Prometheus + Grafana
 monitoring/         # J6 : configuration Prometheus
-data/sample/
 data/raw/
+data/silver/
 data/gold/
 artifacts/models/
 ```

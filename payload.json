@@ -1,0 +1,19 @@
+{
+  "filiere": "Informatique",
+  "age": 19,
+  "bac_type": "general",
+  "mention_bac": "Bien",
+  "etablissement_origine": "lycee_public",
+  "distance_domicile_km": 12.5,
+  "heures_travail_remunere_sem": 5.0,
+  "taux_presence_pct": 82.0,
+  "connexions_lms_30j": 30.0,
+  "heures_lms_total": 42.0,
+  "ressources_consultees": 60,
+  "retards_rendus": 1,
+  "nb_devoirs_rendus": 9,
+  "messages_forum": 3,
+  "motivation": 3.0,
+  "satisfaction": 4.0,
+  "sentiment_appartenance": 3.0
+}

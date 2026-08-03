@@ -1,25 +1,26 @@
 """Orchestration Prefect du pipeline Decrochage (Sprint 3 — modules B9/B10 industrialisation).
 
 POURQUOI UN ORCHESTRATEUR ?
-    Jusqu'ici on lançait le pipeline à la main (`decrochage train`). En production,
-    un orchestrateur apporte ce que un script + cron ne donnent pas :
-      - observabilité : chaque exécution (= "flow run") est tracée dans une UI,
-        avec logs, durées, graphe des étapes ;
-      - résilience : retries automatiques sur les étapes fragiles (ex : I/O) ;
-      - planification : exécutions programmées (toutes les heures, cron...) ;
-      - historique : on peut comparer les runs entre eux (dérive, régressions).
+    Jusqu'ici on lancait le pipeline a la main (`decrochage build-gold` puis
+    `decrochage train`). En production, un orchestrateur apporte ce qu'un
+    script + cron ne donnent pas :
+      - observabilite : chaque execution (= "flow run") est tracee dans une UI,
+        avec logs, durees, graphe des etapes ;
+      - resilience : retries automatiques sur les etapes fragiles (ex : I/O) ;
+      - planification : executions programmees (toutes les heures, cron...) ;
+      - historique : on peut comparer les runs entre eux (derive, regressions).
 
 PRINCIPE DE CE FICHIER
-    Le code métier reste dans src/decrochage/ (loaders, features, modèle).
-    Ici on ne fait QUE l'orchestration : chaque étape devient une `@task`,
-    l'enchaînement devient un `@flow`. C'est la séparation orchestration / métier.
+    Le code metier reste dans src/decrochage/ (construction du gold, modele).
+    Ici on ne fait QUE l'orchestration : chaque etape devient une `@task`,
+    l'enchainement devient un `@flow`. C'est la separation orchestration / metier.
 
-COMMANDES (depuis decrochage-skeleton/, après `uv sync --extra dev`)
+COMMANDES (depuis la racine du repo, apres `uv sync --extra dev`)
     uv run prefect cloud login              # 1 seule fois : relier le poste au compte Cloud
-    uv run python flows/pipeline.py         # exécuter le pipeline → visible dans l'UI Cloud
-    uv run python flows/pipeline.py --serve # créer un déploiement planifié (voir README.md)
+    uv run python flows/pipeline.py         # executer le pipeline -> visible dans l'UI Cloud
+    uv run python flows/pipeline.py --serve # creer un deploiement planifie (voir README.md)
 
-Pas-à-pas complet (création compte, quoi regarder dans l'UI...) : flows/README.md
+Pas-a-pas complet (creation compte, quoi regarder dans l'UI...) : flows/README.md
 """
 
 from __future__ import annotations
@@ -29,163 +30,174 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-# Racine du projet (decrochage-skeleton/), calculée depuis ce fichier :
-# le flow marche quel que soit le dossier depuis lequel on le lance.
+# Racine du projet, calculee depuis ce fichier : le flow marche quel que soit
+# le dossier depuis lequel on le lance.
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT / "src") not in sys.path:  # filet de sécurité si `uv pip install -e .` n'a pas été fait
+if str(ROOT / "src") not in sys.path:  # filet de securite si `uv pip install -e .` n'a pas ete fait
     sys.path.insert(0, str(ROOT / "src"))
 
+import joblib  # noqa: E402
 import pandas as pd  # noqa: E402
 from prefect import flow, get_run_logger, task  # noqa: E402
 from prefect.artifacts import create_markdown_artifact  # noqa: E402
 
-# On réutilise le code métier existant : le flow n'invente RIEN, il orchestre.
+from decrochage import __version__  # noqa: E402
+
+# On reutilise le code metier existant : le flow n'invente RIEN, il orchestre.
+from decrochage.cli import build_gold_dataset  # noqa: E402
 from decrochage.config import settings  # noqa: E402
-from decrochage.data.loaders import (  # noqa: E402
-    build_dataset,
-    load_incidents,
-    load_pressure,
-    load_temperature,
-)
-from decrochage.features.temporal import add_temporal_features  # noqa: E402
 from decrochage.models.tabular import (  # noqa: E402
+    COLONNES_A_IMPUTER,
+    entrainer_et_evaluer,
     load_model,
     predict_proba,
     save_model,
     select_features,
-    train_model,
 )
 
 # ---------------------------------------------------------------------------
-# Les TASKS : une task = une étape observable, rejouable, avec retry possible.
-# Dans l'UI Prefect, chaque task apparaît comme un nœud du graphe d'exécution.
+# Les TASKS : une task = une etape observable, rejouable, avec retry possible.
+# Dans l'UI Prefect, chaque task apparait comme un noeud du graphe d'execution.
 # ---------------------------------------------------------------------------
 
 
 @task(retries=2, retry_delay_seconds=5)
-def charger_sources(data_dir: Path) -> pd.DataFrame:
-    """Charge et harmonise les 3 sources réelles (CSV ';', TSV, incidents).
+def construire_gold(data_dir: Path, gold_dir: Path) -> Path:
+    """Fusionne les sources brutes et encode le dataset gold (voir le notebook).
 
-    `retries=2` : si la lecture échoue (fichier verrouillé, réseau...), Prefect
-    retente 2 fois à 5 s d'intervalle AVANT de mettre le run en échec.
-    C'est le genre d'étape I/O qu'on protège toujours en production.
+    `retries=2` : si la lecture des CSV echoue (fichier verrouille, disque
+    reseau...), Prefect retente 2 fois a 5 s d'intervalle AVANT de mettre le
+    run en echec. C'est le genre d'etape I/O qu'on protege toujours en prod.
     """
     logger = get_run_logger()  # logger Prefect : les messages remontent dans l'UI Cloud
-    temp = load_temperature(data_dir / "capteurs_temperature.csv")
-    pres = load_pressure(data_dir / "capteurs_pression.tsv")
-    inc = load_incidents(data_dir / "releves_incidents.csv")
-    ds = build_dataset(temp, pres, inc, window_hours=settings.incident_window_hours)
-    logger.info(f"Dataset assemblé : {len(ds)} lignes, {ds['machine'].nunique()} machines")
-    return ds
+    df_gold = build_gold_dataset(data_dir)
+    gold_dir.mkdir(parents=True, exist_ok=True)
+    out = gold_dir / "gold-dataset.csv"
+    df_gold.to_csv(out, index=False, sep=";")
+    logger.info(f"Gold construit : {len(df_gold)} lignes, {df_gold.shape[1]} colonnes -> {out}")
+    return out
 
 
 @task
-def construire_features(ds: pd.DataFrame) -> pd.DataFrame:
-    """Ajoute lags + moyennes glissantes par machine (sans fuite temporelle)."""
+def entrainer_modele(gold_path: Path, model_dir: Path, seed: int) -> dict:
+    """Split/imputation/entrainement/evaluation, puis persiste modele + metadonnees."""
     logger = get_run_logger()
-    ds = add_temporal_features(ds).dropna()
-    logger.info(f"Features temporelles : {ds.shape[1]} colonnes, {len(ds)} lignes exploitables")
-    return ds
+    df_gold = pd.read_csv(gold_path, sep=";")
 
+    model, imputer, metrics, feature_columns = entrainer_et_evaluer(
+        df_gold,
+        target_col=settings.target_col,
+        threshold=settings.decision_threshold,
+        random_state=seed,
+    )
 
-@task
-def entrainer_modele(ds: pd.DataFrame, out: Path, data_dir: Path) -> dict:
-    """Entraîne le RandomForest et persiste modèle + métadonnées (traçabilité)."""
-    logger = get_run_logger()
-    X, y = select_features(ds, settings.target_col), ds[settings.target_col]
-    model = train_model(X, y, random_state=settings.random_seed)
-    save_model(model, out)
-    # Mêmes métadonnées que `decrochage train` + provenance de l'orchestration :
-    # en audit, on doit pouvoir dire QUI a produit CE modèle, QUAND, avec QUELLES données.
+    model_dir.mkdir(parents=True, exist_ok=True)
+    save_model(model, model_dir / "logistic.joblib")
+    joblib.dump(imputer, model_dir / "imputer.joblib")
+
+    # Memes metadonnees que `decrochage train` + provenance de l'orchestration :
+    # en audit, on doit pouvoir dire QUI a produit CE modele, QUAND, avec QUELLES donnees.
     meta = {
         "created_at": datetime.now(UTC).isoformat(),
-        "package_version": "0.1.0",
-        "random_seed": settings.random_seed,
+        "package_version": __version__,
+        "random_seed": seed,
         "target_col": settings.target_col,
-        "features": list(X.columns),
-        "n_train_rows": int(len(ds)),
-        "panne_rate": round(float(y.mean()), 4),
-        "dataset": str(data_dir),
+        "features": feature_columns,
+        "metrics_holdout": metrics,
+        "dataset": str(gold_path),
         "orchestrator": "prefect",
     }
-    (out.parent / "model_metadata.json").write_text(json.dumps(meta, indent=2))
-    logger.info(f"Modèle entraîné ({len(ds)} lignes, panne={y.mean():.2%}) → {out}")
+    (model_dir / "model_metadata.json").write_text(json.dumps(meta, indent=2))
+    logger.info(
+        f"Modele entraine (rappel={metrics['recall']}, AUC={metrics['roc_auc']}) -> {model_dir}"
+    )
     return meta
 
 
 @task
-def scorer_machines(model_path: Path, ds: pd.DataFrame) -> dict[str, float]:
-    """Score la dernière observation de chaque machine : P(panne) ∈ [0, 1]."""
-    model = load_model(model_path)
-    last = ds.groupby("machine").tail(1)  # 1 ligne par machine = son état le plus récent
-    proba = predict_proba(model, select_features(last, settings.target_col))
-    return {m: round(float(p), 3) for m, p in zip(last["machine"], proba, strict=False)}
+def scorer_echantillon(
+    gold_path: Path, model_dir: Path, n: int = 20, seed: int = 42
+) -> dict[str, float]:
+    """Score un echantillon d'etudiants du gold : P(abandon) in [0, 1] chacun."""
+    df_gold = pd.read_csv(gold_path, sep=";")
+    model = load_model(model_dir / "logistic.joblib")
+    imputer = joblib.load(model_dir / "imputer.joblib")
+
+    echantillon = df_gold.sample(n=min(n, len(df_gold)), random_state=seed).reset_index(drop=True)
+    echantillon[COLONNES_A_IMPUTER] = imputer.transform(echantillon[COLONNES_A_IMPUTER])
+    proba = predict_proba(model, select_features(echantillon, settings.target_col))
+    return {f"etudiant_{i}": round(float(p), 3) for i, p in enumerate(proba)}
 
 
 @task
 def publier_rapport(meta: dict, scores: dict[str, float]) -> None:
-    """Publie un rapport markdown : UI Cloud → onglet Artifacts du run.
+    """Publie un rapport markdown : UI Cloud -> onglet Artifacts du run.
 
-    Un "artifact" Prefect = un livrable lisible attaché au run (rapport, tableau...).
-    Intérêt : le métier consulte le résultat dans l'UI sans ouvrir de terminal.
+    Un "artifact" Prefect = un livrable lisible attache au run (rapport, tableau...).
+    Interet : le metier consulte le resultat dans l'UI sans ouvrir de terminal.
     """
     seuil = settings.decision_threshold
+    m = meta["metrics_holdout"]
     lignes = "\n".join(
-        f"| {machine} | {p:.3f} | {'A RISQUE' if p >= seuil else 'ok'} |"
-        for machine, p in sorted(scores.items())
+        f"| {nom} | {p:.3f} | {'A RISQUE' if p >= seuil else 'ok'} |"
+        for nom, p in sorted(scores.items())
     )
     create_markdown_artifact(
-        key="rapport-decrochage",  # clé stable : l'UI garde l'historique des versions
-        description="Scoring maintenance prédictive Decrochage",
+        key="rapport-decrochage",  # cle stable : l'UI garde l'historique des versions
+        description="Detection precoce du decrochage etudiant",
         markdown=(
             f"# Decrochage — rapport de run\n\n"
-            f"- Entraînement : {meta['n_train_rows']} lignes, "
-            f"taux de panne {meta['panne_rate']:.2%}\n"
-            f"- Seuil de décision : {seuil}\n\n"
-            f"| Machine | P(panne) | Statut |\n|---|---|---|\n{lignes}\n"
+            f"- Entrainement : {m['n_train']} lignes train / {m['n_test']} lignes test, "
+            f"taux d'abandon {m['taux_abandon']:.2%}\n"
+            f"- Performance (test) : rappel {m['recall']}, precision {m['precision']}, "
+            f"F1 {m['f1']}, AUC {m['roc_auc']}\n"
+            f"- Seuil de decision : {seuil}\n\n"
+            f"| Etudiant (echantillon) | P(abandon) | Statut |\n|---|---|---|\n{lignes}\n"
         ),
     )
 
 
 # ---------------------------------------------------------------------------
-# Le FLOW : le chef d'orchestre. Il enchaîne les tasks ; Prefect trace tout.
+# Le FLOW : le chef d'orchestre. Il enchaine les tasks ; Prefect trace tout.
 # ---------------------------------------------------------------------------
 
 
-@flow(name="decrochage-pipeline", log_prints=True)  # log_prints : les print() → logs du run
+@flow(name="decrochage-pipeline", log_prints=True)  # log_prints : les print() -> logs du run
 def pipeline_decrochage(data_dir: str | None = None) -> dict[str, float]:
-    """Pipeline complet : sources → features → entraînement → scoring → rapport.
+    """Pipeline complet : sources brutes -> gold -> entrainement -> scoring -> rapport.
 
-    `data_dir` est un PARAMÈTRE de flow : dans l'UI Cloud on peut relancer le
-    pipeline sur un autre jeu de données sans toucher au code (Deployments → Run).
+    `data_dir` est un PARAMETRE de flow : dans l'UI Cloud on peut relancer le
+    pipeline sur un autre jeu de donnees sans toucher au code (Deployments -> Run).
     """
-    dd = Path(data_dir) if data_dir else ROOT / "data" / "sample"
-    out = ROOT / "artifacts" / "models" / "rf.joblib"
+    dd = Path(data_dir) if data_dir else settings.data_dir
 
-    ds = construire_features(charger_sources(dd))  # les tasks s'enchaînent comme des fonctions
-    meta = entrainer_modele(ds, out, dd)
-    scores = scorer_machines(out, ds)
+    gold_path = construire_gold(dd, settings.gold_dir)
+    meta = entrainer_modele(gold_path, settings.model_dir, settings.random_seed)
+    scores = scorer_echantillon(gold_path, settings.model_dir)
     publier_rapport(meta, scores)
 
-    a_risque = [m for m, p in scores.items() if p >= settings.decision_threshold]
-    print(f"{len(scores)} machines scorées, {len(a_risque)} au-dessus du seuil : {a_risque}")
+    a_risque = [nom for nom, p in scores.items() if p >= settings.decision_threshold]
+    print(
+        f"{len(scores)} etudiants (echantillon) scores, "
+        f"{len(a_risque)} au-dessus du seuil : {a_risque}"
+    )
     return scores
 
 
 if __name__ == "__main__":
     if "--serve" in sys.argv:
-        # MODE DÉPLOIEMENT : `serve()` enregistre un "deployment" planifié dans
-        # Prefect Cloud et transforme CE process en mini-worker local qui exécute
-        # les runs. Tant qu'il tourne (Ctrl+C pour arrêter) :
-        #   - exécution automatique toutes les heures (interval=3600 s) ;
-        #   - déclenchement à la demande depuis l'UI : Deployments → Run.
-        # Pas d'infra à gérer : idéal pour la démo. En prod réelle : workers + work pools.
+        # MODE DEPLOIEMENT : `serve()` enregistre un "deployment" planifie dans
+        # Prefect Cloud et transforme CE process en mini-worker local qui execute
+        # les runs. Tant qu'il tourne (Ctrl+C pour arreter) :
+        #   - execution automatique toutes les heures (interval=3600 s) ;
+        #   - declenchement a la demande depuis l'UI : Deployments -> Run.
+        # Pas d'infra a gerer : ideal pour la demo. En prod reelle : workers + work pools.
         pipeline_decrochage.serve(
             name="decrochage-horaire",
             interval=3600,
             tags=["decrochage", "sprint3"],
         )
     else:
-        # MODE SIMPLE : une exécution immédiate, tracée dans le Cloud si le poste
-        # est connecté (`prefect cloud login`), sinon suivie par un serveur local éphémère.
+        # MODE SIMPLE : une execution immediate, tracee dans le Cloud si le poste
+        # est connecte (`prefect cloud login`), sinon suivie par un serveur local ephemere.
         pipeline_decrochage()
