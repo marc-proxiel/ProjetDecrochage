@@ -52,5 +52,6 @@ class PredictionResponse(BaseModel):
 
     proba_abandon: float = Field(..., ge=0.0, le=1.0)
     decision: str
+    moyenne_predite: float | None = Field(None, description="Estimation de moyenne_finale /20")
     model_version: str
     threshold: float

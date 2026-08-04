@@ -78,7 +78,7 @@ curl.exe -X POST http://localhost:8000/predict-tabular -H "X-API-Key: dev-key" -
 
 Le plus simple, sans aucune syntaxe : ouvrir http://localhost:8000/docs , deplier `POST /predict-tabular`, cliquer **Try it out**, renseigner `X-API-Key = dev-key`, coller le contenu de `payload.json` et **Execute**.
 
-Reponse attendue : `{"proba_abandon":0.0556,"decision":"ok","model_version":"0.1.0","threshold":0.5}`
+Reponse attendue : `{"proba_abandon":0.0556,"decision":"ok","moyenne_predite":16.85,"model_version":"0.1.0","threshold":0.5}`
 
 Codes attendus : sans cle -> 401, corps trop gros -> 413, trop de requetes -> 429, donnees invalides -> 422.
 

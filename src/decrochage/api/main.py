@@ -112,10 +112,14 @@ def predict_tabular(
     # `df` a exactement les colonnes vues a l'entrainement (aligner_colonnes) :
     # pas besoin de select_features ici.
     proba = float(predict_proba(bundle.model, df)[0])
+    moyenne_predite = (
+        float(bundle.regressor.predict(df)[0]) if bundle.regressor is not None else None
+    )
 
     return PredictionResponse(
         proba_abandon=proba,
         decision="a_risque" if proba >= bundle.threshold else "ok",
+        moyenne_predite=moyenne_predite,
         model_version=bundle.version,
         threshold=bundle.threshold,
     )

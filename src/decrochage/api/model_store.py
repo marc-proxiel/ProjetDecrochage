@@ -25,6 +25,7 @@ from decrochage.models.tabular import load_model
 @dataclass
 class ModelBundle:
     model: Any  # le pipeline scikit-learn entraine (StandardScaler + LogisticRegression)
+    regressor: Any | None  # GradientBoostingRegressor pour moyenne_finale (optionnel)
     imputer: Any  # SimpleImputer fit sur le train (cf. chapitre imputation du notebook)
     catalogue: pd.DataFrame  # table filiere -> faculte/capacite_accueil/... (jointure)
     feature_columns: list[str]  # colonnes EXACTES vues a l'entrainement, dans l'ordre
@@ -41,8 +42,12 @@ def load_bundle(model_dir: Path, data_dir: Path, threshold: float) -> ModelBundl
     meta = json.loads((model_dir / "model_metadata.json").read_text())
     catalogue = pd.read_csv(data_dir / "dataset catalogue_formations_V5.csv")
 
+    regressor_path = model_dir / "regressor.joblib"
+    regressor = load_model(regressor_path) if regressor_path.exists() else None
+
     return ModelBundle(
         model=load_model(model_dir / "logistic.joblib"),
+        regressor=regressor,
         imputer=joblib.load(model_dir / "imputer.joblib"),
         catalogue=catalogue,
         feature_columns=list(meta["features"]),

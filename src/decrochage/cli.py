@@ -30,11 +30,13 @@ from decrochage.config import settings
 from decrochage.models.tabular import (
     COLONNES_A_IMPUTER,
     encoder_categorielles,
-    entrainer_et_evaluer,
+    entrainer_classifieur,
+    entrainer_regresseur,
     fusionner_catalogue,
     predict_proba,
     save_model,
     select_features,
+    split_et_imputer,
 )
 
 app = typer.Typer(help="Decrochage - CLI de detection precoce du decrochage etudiant")
@@ -128,7 +130,7 @@ def train(
     test_size: float = 0.2,
     seed: int = settings.random_seed,
 ) -> None:
-    """Entraine le modele retenu (regression logistique) et sauvegarde ses metadonnees."""
+    """Entraine le classifieur (abandon) et le regresseur (moyenne_finale), sauvegarde les deux."""
     gold_path = gold_dir / "gold-dataset.csv"
     if not gold_path.exists():
         raise typer.BadParameter(
@@ -136,17 +138,19 @@ def train(
         )
     df = pd.read_csv(gold_path, sep=";")
 
-    model, imputer, metrics, feature_columns = entrainer_et_evaluer(
-        df,
-        target_col=settings.target_col,
-        test_size=test_size,
-        threshold=settings.decision_threshold,
-        random_state=seed,
-    )
-    typer.echo(f"metrics (test) : {metrics}")
+    # Meme split/imputation partage par les deux modeles (memes lignes train/test).
+    train_df, test_df, imputer = split_et_imputer(df, settings.target_col, test_size, seed)
 
-    model_path = model_dir / "logistic.joblib"
-    save_model(model, model_path)
+    model, metrics, feature_columns = entrainer_classifieur(
+        train_df, test_df, settings.target_col, settings.decision_threshold, seed
+    )
+    typer.echo(f"classifieur abandon (test) : {metrics}")
+
+    regressor, metrics_reg, _ = entrainer_regresseur(train_df, test_df, "moyenne_finale", seed)
+    typer.echo(f"regresseur moyenne_finale (test) : {metrics_reg}")
+
+    save_model(model, model_dir / "logistic.joblib")
+    save_model(regressor, model_dir / "regressor.joblib")
     joblib.dump(imputer, model_dir / "imputer.joblib")
 
     metadata = {
@@ -156,21 +160,24 @@ def train(
         "target_col": settings.target_col,
         "features": feature_columns,
         "metrics_holdout": metrics,
+        "metrics_holdout_regression": metrics_reg,
     }
     (model_dir / "model_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    typer.echo(f"modele -> {model_path}")
+    typer.echo(f"modeles -> {model_dir / 'logistic.joblib'}, {model_dir / 'regressor.joblib'}")
 
 
 @app.command()
 def predict(features_csv: Path) -> None:
-    """Score chaque ligne d'un CSV de features (meme colonnes que le gold, sans la cible)."""
+    """Score chaque ligne d'un CSV (proba d'abandon + note predite), meme colonnes que le gold."""
     from decrochage.models.tabular import load_model
 
     model_path = settings.model_dir / "logistic.joblib"
+    regressor_path = settings.model_dir / "regressor.joblib"
     imputer_path = settings.model_dir / "imputer.joblib"
     if not model_path.exists():
         raise typer.BadParameter(f"Model not found: {model_path}. Run `decrochage train` first.")
     model = load_model(model_path)
+    regressor = load_model(regressor_path) if regressor_path.exists() else None
 
     df = pd.read_csv(features_csv, sep=";")
     if imputer_path.exists():
@@ -178,9 +185,11 @@ def predict(features_csv: Path) -> None:
         df[COLONNES_A_IMPUTER] = imputer.transform(df[COLONNES_A_IMPUTER])
     X = select_features(df, settings.target_col)
     proba = predict_proba(model, X)
-    for i, p in enumerate(proba):
+    notes = regressor.predict(X) if regressor is not None else [None] * len(proba)
+    for i, (p, note) in enumerate(zip(proba, notes, strict=True)):
         decision = "a_risque" if p >= settings.decision_threshold else "ok"
-        typer.echo(f"ligne {i} : proba_abandon={p:.3f} -> {decision}")
+        suffixe = f", moyenne_predite={note:.2f}" if note is not None else ""
+        typer.echo(f"ligne {i} : proba_abandon={p:.3f} -> {decision}{suffixe}")
 
 
 def main() -> None:

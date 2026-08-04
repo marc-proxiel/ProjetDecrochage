@@ -23,9 +23,18 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -160,28 +169,35 @@ def predict_proba(model: Pipeline, X: pd.DataFrame) -> np.ndarray:
     return model.predict_proba(X)[:, 1]
 
 
-def entrainer_et_evaluer(
+def split_et_imputer(
     df_gold: pd.DataFrame,
-    target_col: str = "abandon",
+    target_stratify: str = "abandon",
     test_size: float = 0.2,
-    threshold: float = 0.5,
     random_state: int = 42,
-) -> tuple[Pipeline, SimpleImputer, dict, list[str]]:
-    """Split stratifie, imputation (fit sur le train uniquement), entrainement et
-    evaluation sur le test — la demarche retenue dans le notebook (chapitres
-    "Split train/test et imputation" puis "9.8. Choix du modele").
-
-    Utilisee a la fois par `decrochage train` (CLI) et par le flow Prefect
-    (`flows/pipeline.py`) : une seule version de la logique d'entrainement.
-    """
+) -> tuple[pd.DataFrame, pd.DataFrame, SimpleImputer]:
+    """Split stratifie puis imputation par mediane (fit sur le train uniquement) —
+    partage entre l'entrainement du classifieur et celui du regresseur, pour que
+    les deux modeles voient exactement le meme train/test (memes lignes)."""
     train_df, test_df = train_test_split(
-        df_gold, test_size=test_size, random_state=random_state, stratify=df_gold[target_col]
+        df_gold, test_size=test_size, random_state=random_state, stratify=df_gold[target_stratify]
     )
-
     imputer = SimpleImputer(strategy="median")
+    train_df = train_df.copy()
+    test_df = test_df.copy()
     train_df[COLONNES_A_IMPUTER] = imputer.fit_transform(train_df[COLONNES_A_IMPUTER])
     test_df[COLONNES_A_IMPUTER] = imputer.transform(test_df[COLONNES_A_IMPUTER])
+    return train_df, test_df, imputer
 
+
+def entrainer_classifieur(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    target_col: str = "abandon",
+    threshold: float = 0.5,
+    random_state: int = 42,
+) -> tuple[Pipeline, dict, list[str]]:
+    """Entraine et evalue le classifieur retenu (regression logistique) sur un
+    split deja prepare (cf. `split_et_imputer`)."""
     x_tr = select_features(train_df, target_col)
     y_tr = train_df[target_col]
     x_te = select_features(test_df, target_col)
@@ -199,9 +215,61 @@ def entrainer_et_evaluer(
         "threshold": threshold,
         "n_train": int(len(train_df)),
         "n_test": int(len(test_df)),
-        "taux_abandon": round(float(df_gold[target_col].mean()), 4),
+        "taux_abandon": round(float(pd.concat([train_df, test_df])[target_col].mean()), 4),
     }
-    return model, imputer, metrics, list(x_tr.columns)
+    return model, metrics, list(x_tr.columns)
+
+
+def entrainer_regresseur(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    target_col: str = "moyenne_finale",
+    random_state: int = 42,
+) -> tuple[GradientBoostingRegressor, dict, list[str]]:
+    """Entraine et evalue le regresseur retenu (Gradient Boosting) pour estimer
+    `moyenne_finale`, sur le MEME split que le classifieur (cf. `split_et_imputer`).
+
+    Modele et hyperparametres retenus dans le notebook (chapitre 10, apres
+    comparaison Ridge/Random Forest/Gradient Boosting + tuning).
+    """
+    # "abandon" ici sert juste a select_features ; moyenne_finale est deja exclue
+    # via COLONNES_NON_FEATURES, quel que soit le target_col passe.
+    x_tr = select_features(train_df, "abandon")
+    y_tr = train_df[target_col]
+    x_te = select_features(test_df, "abandon")
+    y_te = test_df[target_col]
+
+    model = GradientBoostingRegressor(
+        n_estimators=100, max_depth=3, learning_rate=0.1, random_state=random_state
+    )
+    model.fit(x_tr, y_tr)
+    pred = model.predict(x_te)
+
+    metrics = {
+        "mae": round(float(mean_absolute_error(y_te, pred)), 4),
+        "rmse": round(float(mean_squared_error(y_te, pred) ** 0.5), 4),
+        "r2": round(float(r2_score(y_te, pred)), 4),
+    }
+    return model, metrics, list(x_tr.columns)
+
+
+def entrainer_et_evaluer(
+    df_gold: pd.DataFrame,
+    target_col: str = "abandon",
+    test_size: float = 0.2,
+    threshold: float = 0.5,
+    random_state: int = 42,
+) -> tuple[Pipeline, SimpleImputer, dict, list[str]]:
+    """Split + imputation + entrainement + evaluation du classifieur, en un seul
+    appel — conserve pour compatibilite (CLI, flow Prefect). Pour entrainer aussi
+    le regresseur sur le meme split, preferer `split_et_imputer` + `entrainer_classifieur`
+    + `entrainer_regresseur` separement (cf. `decrochage train`).
+    """
+    train_df, test_df, imputer = split_et_imputer(df_gold, target_col, test_size, random_state)
+    model, metrics, feature_columns = entrainer_classifieur(
+        train_df, test_df, target_col, threshold, random_state
+    )
+    return model, imputer, metrics, feature_columns
 
 
 def save_model(model: Pipeline, path: Path) -> None:
