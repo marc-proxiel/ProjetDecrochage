@@ -3,6 +3,7 @@
 apiVersion: 1
 datasources:
   - name: Prometheus          # nom affiche dans Grafana
+    uid: prometheus           # identifiant STABLE (reference par les regles d'alerte provisionnees)
     type: prometheus          # type de source
     access: proxy             # Grafana interroge Prometheus cote serveur
     url: http://prometheus:9090   # adresse du service 'prometheus' (DNS interne Compose)

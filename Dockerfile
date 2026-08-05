@@ -120,6 +120,12 @@ COPY --from=build /app/.venv /app/.venv
 # l'API peut prédire immédiatement (pas besoin d'entraîner ni de télécharger un modèle).
 COPY artifacts/models ./artifacts/models
 
+# Le catalogue des formations est aussi necessaire au demarrage (model_store.load_bundle
+# le lit pour la jointure sur `filiere`, cf. src/decrochage/api/model_store.py) : sans
+# lui, /ready echouerait (FileNotFoundError) meme avec le modele present ci-dessus.
+# Forme JSON (liste) obligatoire ici car le nom de fichier contient un espace.
+COPY ["data/raw/dataset catalogue_formations_V5.csv", "./data/raw/dataset catalogue_formations_V5.csv"]
+
 # À partir d'ICI, on bascule sur l'utilisateur non privilégié créé plus haut.
 # Toutes les instructions suivantes ET le processus de l'appli tourneront en 'appuser'.
 USER appuser

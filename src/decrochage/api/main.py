@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 import pandas as pd
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, status
 from loguru import logger
+from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
 import decrochage.api.model_store as store
@@ -35,6 +36,33 @@ from decrochage.models.tabular import (
     predict_proba,
 )
 
+# -----------------------------------------------------------------------------
+# METRIQUES METIER (exploitation + detection de derive) : en plus des metriques
+# HTTP generiques de l'Instrumentator (requetes, latence, codes de reponse), on
+# expose ici ce qui est specifique aux DEUX modeles, pour pouvoir alerter dans
+# Grafana si le comportement en production s'ecarte de ce qui a ete valide dans
+# le notebook (chapitre 7.6 : taux d'abandon ~28.4 %, moyenne_finale ~12.85/20).
+# -----------------------------------------------------------------------------
+PREDICTIONS_TOTAL = Counter(
+    "decrochage_predictions_total",
+    "Nombre de predictions realisees par /predict-tabular, par decision",
+    ["decision"],
+)
+PROBA_ABANDON = Histogram(
+    "decrochage_proba_abandon",
+    "Distribution des probabilites d'abandon predites (derive du classifieur)",
+    buckets=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+)
+MOYENNE_PREDITE = Histogram(
+    "decrochage_moyenne_predite",
+    "Distribution des notes finales predites (derive du regresseur)",
+    buckets=(0, 5, 8, 10, 12, 14, 16, 18, 20),
+)
+MODEL_LOADED = Gauge(
+    "decrochage_model_loaded",
+    "1 si le classifieur est charge et pret a predire, 0 sinon",
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,9 +70,11 @@ async def lifespan(app: FastAPI):
         store._BUNDLE = store.load_bundle(
             settings.model_dir, settings.data_dir, settings.decision_threshold
         )
+        MODEL_LOADED.set(1)
         logger.info("Modele charge")
     except FileNotFoundError:
         store._BUNDLE = None
+        MODEL_LOADED.set(0)
         logger.warning("Aucun modele — /ready renverra 503 (lancer `decrochage train` d'abord)")
     yield
 
@@ -88,11 +118,28 @@ def ready(bundle: ModelBundle | None = Depends(get_model_bundle)) -> dict:
     "/predict-tabular",
     response_model=PredictionResponse,
     dependencies=[Depends(require_api_key), Depends(rate_limit)],
+    summary="Score un etudiant : risque de decrochage + note finale estimee",
+    description=(
+        "A partir du releve mi-semestre d'un etudiant, renvoie DEUX predictions "
+        "produites par deux modeles independants (aucune fuite entre les deux) :\n\n"
+        "- `proba_abandon` / `decision` : regression logistique entrainee sur `abandon`.\n"
+        "- `moyenne_predite` : Gradient Boosting Regressor entraine sur `moyenne_finale`.\n\n"
+        "Demarche complete (comparaison de modeles, validation croisee, SHAP, choix du "
+        "seuil) documentee dans `EtudeDecrochageMVA.ipynb`."
+    ),
+    responses={
+        401: {"description": "Cle API absente ou invalide (en-tete X-API-Key)."},
+        422: {"description": "Donnees invalides ou filiere inconnue du catalogue."},
+        429: {"description": "Trop de requetes pour cette adresse IP."},
+        503: {"description": "Modele non charge (lancer `decrochage train` d'abord)."},
+    },
 )
 def predict_tabular(
     payload: StudentFeatures,
     bundle: ModelBundle | None = Depends(get_model_bundle),
 ) -> PredictionResponse:
+    """Prepare la ligne (fusion catalogue -> encodage -> alignement -> imputation),
+    puis interroge le classifieur et le regresseur pour construire la reponse."""
     if bundle is None:
         raise HTTPException(status_code=503, detail="Modele non charge")
 
@@ -115,10 +162,16 @@ def predict_tabular(
     moyenne_predite = (
         float(bundle.regressor.predict(df)[0]) if bundle.regressor is not None else None
     )
+    decision = "a_risque" if proba >= bundle.threshold else "ok"
+
+    PREDICTIONS_TOTAL.labels(decision=decision).inc()
+    PROBA_ABANDON.observe(proba)
+    if moyenne_predite is not None:
+        MOYENNE_PREDITE.observe(moyenne_predite)
 
     return PredictionResponse(
         proba_abandon=proba,
-        decision="a_risque" if proba >= bundle.threshold else "ok",
+        decision=decision,
         moyenne_predite=moyenne_predite,
         model_version=bundle.version,
         threshold=bundle.threshold,

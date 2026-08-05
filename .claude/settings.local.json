@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "PowerShell(.venv\\\\Scripts\\\\pip.exe install -e . --no-deps)",
-      "PowerShell(& \".venv\\\\Scripts\\\\pip.exe\" install -e . --no-deps)"
+      "PowerShell(& \".venv\\\\Scripts\\\\pip.exe\" install -e . --no-deps)",
+      "Bash(uv run *)"
     ]
   }
 }

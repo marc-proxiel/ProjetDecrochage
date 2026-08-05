@@ -1,0 +1,248 @@
+# =============================================================================
+#  FICHIER : monitoring/grafana/provisioning/alerting/rules.yml
+#  ROLE    : regles d'alerte Grafana provisionnees automatiquement au demarrage
+#            (meme principe que datasources/datasource.yml : rien a configurer
+#            a la main dans l'UI, tout est declaratif et survit a un
+#            `docker compose down` / recreation du conteneur).
+#
+#  DEUX FAMILLES D'ALERTES :
+#    1) EXPLOITATION : l'API repond-elle, le modele est-il charge, le taux
+#       d'erreur/la latence sont-ils normaux ?
+#    2) DERIVE (drift) : les predictions en production restent-elles dans la
+#       plage observee a l'entrainement (EtudeDecrochageMVA.ipynb, chapitre
+#       7.6) ? Taux d'abandon predit ~28.4 %, moyenne_finale predite ~12.85/20.
+#       Un ecart important peut signaler soit une derive des donnees d'entree
+#       (nouveaux profils d'etudiants, changement de saisie...), soit un bug.
+#
+#  Ces seuils sont un POINT DE DEPART a affiner avec de vraies donnees de
+#  production (pas de veritable historique de derive disponible ici).
+# =============================================================================
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: decrochage-exploitation
+    folder: Decrochage
+    interval: 1m
+    rules:
+      # ---------------------------------------------------------------------
+      # 1. API DOWN : Prometheus n'arrive plus a scraper /metrics.
+      # ---------------------------------------------------------------------
+      - uid: decrochage-api-down
+        title: "[Decrochage] API down"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job="decrochage-api"}
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        for: 1m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical, categorie: exploitation }
+        annotations:
+          summary: "Prometheus ne parvient plus a joindre l'API (up=0) depuis au moins 1 minute."
+
+      # ---------------------------------------------------------------------
+      # 2. MODELE NON CHARGE : /ready renverrait 503 (decrochage_model_loaded=0).
+      # ---------------------------------------------------------------------
+      - uid: decrochage-model-not-loaded
+        title: "[Decrochage] Modele non charge"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: decrochage_model_loaded
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        for: 1m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical, categorie: exploitation }
+        annotations:
+          summary: "Le classifieur n'est pas charge : /predict-tabular renvoie 503. Lancer `decrochage train`."
+
+      # ---------------------------------------------------------------------
+      # 3. TAUX D'ERREUR SERVEUR ELEVE (5xx) sur 5 minutes.
+      # ---------------------------------------------------------------------
+      - uid: decrochage-high-error-rate
+        title: "[Decrochage] Taux d'erreur 5xx eleve"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(rate(http_requests_total{status=~"5.."}[5m]))
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        for: 5m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning, categorie: exploitation }
+        annotations:
+          summary: "Plus de 0.1 requete/s en erreur 5xx sur les 5 dernieres minutes."
+
+      # ---------------------------------------------------------------------
+      # 4. LATENCE ELEVEE : p95 > 1s sur 5 minutes.
+      # ---------------------------------------------------------------------
+      - uid: decrochage-high-latency
+        title: "[Decrochage] Latence p95 elevee"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum(rate(http_request_duration_highr_seconds_bucket[5m])) by (le))
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        for: 5m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning, categorie: exploitation }
+        annotations:
+          summary: "La latence p95 des requetes HTTP depasse 1 seconde depuis 5 minutes."
+
+      # ---------------------------------------------------------------------
+      # 5. DERIVE DU TAUX D'ABANDON PREDIT : moyenne mobile 30 min hors de la
+      #    plage [18 %, 39 %] (baseline entrainement 28.4 %, marge ~10 points).
+      # ---------------------------------------------------------------------
+      - uid: decrochage-drift-proba-abandon-high
+        title: "[Decrochage] Derive : taux d'abandon predit trop haut"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(decrochage_proba_abandon_sum[30m]))
+                / sum(increase(decrochage_proba_abandon_count[30m]))
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.39] }
+        for: 10m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning, categorie: derive }
+        annotations:
+          summary: >-
+            Taux d'abandon predit moyen (30 min) au-dessus de 39 %, largement au-dessus des
+            28.4 % observes a l'entrainement. Verifier une derive des donnees d'entree.
+
+      - uid: decrochage-drift-proba-abandon-low
+        title: "[Decrochage] Derive : taux d'abandon predit trop bas"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(decrochage_proba_abandon_sum[30m]))
+                / sum(increase(decrochage_proba_abandon_count[30m]))
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [0.18] }
+        for: 10m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning, categorie: derive }
+        annotations:
+          summary: >-
+            Taux d'abandon predit moyen (30 min) sous 18 %, loin des 28.4 % observes a
+            l'entrainement. Verifier une derive des donnees d'entree.
+
+      # ---------------------------------------------------------------------
+      # 6. DERIVE DE LA NOTE PREDITE : moyenne mobile 30 min hors de
+      #    [9.85, 15.85] (baseline entrainement 12.85, marge +/- 3 points).
+      # ---------------------------------------------------------------------
+      - uid: decrochage-drift-moyenne-predite
+        title: "[Decrochage] Derive : note finale predite anormale"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: >-
+                sum(increase(decrochage_moyenne_predite_sum[30m]))
+                / sum(increase(decrochage_moyenne_predite_count[30m]))
+              instant: true
+          - refId: C
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: outside_range, params: [9.85, 15.85] }
+        for: 10m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning, categorie: derive }
+        annotations:
+          summary: >-
+            Moyenne des notes predites (30 min) hors de la plage [9.85, 15.85], loin des
+            12.85/20 observes a l'entrainement. Verifier une derive des donnees d'entree.
