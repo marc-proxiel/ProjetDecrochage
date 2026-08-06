@@ -48,12 +48,15 @@ from decrochage.cli import build_gold_dataset  # noqa: E402
 from decrochage.config import settings  # noqa: E402
 from decrochage.models.tabular import (  # noqa: E402
     COLONNES_A_IMPUTER,
-    entrainer_et_evaluer,
+    entrainer_classifieur,
+    entrainer_regresseur,
     load_model,
     predict_proba,
     save_model,
     select_features,
+    split_et_imputer,
 )
+from decrochage.storage import enregistrer_scores, ensure_schema, get_engine  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Les TASKS : une task = une etape observable, rejouable, avec retry possible.
@@ -80,23 +83,24 @@ def construire_gold(data_dir: Path, gold_dir: Path) -> Path:
 
 @task
 def entrainer_modele(gold_path: Path, model_dir: Path, seed: int) -> dict:
-    """Split/imputation/entrainement/evaluation, puis persiste modele + metadonnees."""
+    """Split/imputation partages, puis entrainement + evaluation du classifieur
+    ET du regresseur (memes deux modeles que `decrochage train`, CLI)."""
     logger = get_run_logger()
     df_gold = pd.read_csv(gold_path, sep=";")
 
-    model, imputer, metrics, feature_columns = entrainer_et_evaluer(
-        df_gold,
-        target_col=settings.target_col,
-        threshold=settings.decision_threshold,
-        random_state=seed,
+    train_df, test_df, imputer = split_et_imputer(df_gold, settings.target_col, random_state=seed)
+    model, metrics, feature_columns = entrainer_classifieur(
+        train_df, test_df, settings.target_col, settings.decision_threshold, seed
     )
+    regressor, metrics_reg, _ = entrainer_regresseur(train_df, test_df, "moyenne_finale", seed)
 
     model_dir.mkdir(parents=True, exist_ok=True)
     save_model(model, model_dir / "logistic.joblib")
+    save_model(regressor, model_dir / "regressor.joblib")
     joblib.dump(imputer, model_dir / "imputer.joblib")
 
     # Memes metadonnees que `decrochage train` + provenance de l'orchestration :
-    # en audit, on doit pouvoir dire QUI a produit CE modele, QUAND, avec QUELLES donnees.
+    # en audit, on doit pouvoir dire QUI a produit CES modeles, QUAND, avec QUELLES donnees.
     meta = {
         "created_at": datetime.now(UTC).isoformat(),
         "package_version": __version__,
@@ -104,12 +108,14 @@ def entrainer_modele(gold_path: Path, model_dir: Path, seed: int) -> dict:
         "target_col": settings.target_col,
         "features": feature_columns,
         "metrics_holdout": metrics,
+        "metrics_holdout_regression": metrics_reg,
         "dataset": str(gold_path),
         "orchestrator": "prefect",
     }
     (model_dir / "model_metadata.json").write_text(json.dumps(meta, indent=2))
     logger.info(
-        f"Modele entraine (rappel={metrics['recall']}, AUC={metrics['roc_auc']}) -> {model_dir}"
+        f"Modeles entraines (rappel={metrics['recall']}, AUC={metrics['roc_auc']}, "
+        f"R2 note={metrics_reg['r2']}) -> {model_dir}"
     )
     return meta
 
@@ -117,30 +123,47 @@ def entrainer_modele(gold_path: Path, model_dir: Path, seed: int) -> dict:
 @task
 def scorer_echantillon(
     gold_path: Path, model_dir: Path, n: int = 20, seed: int = 42
-) -> dict[str, float]:
-    """Score un echantillon d'etudiants du gold : P(abandon) in [0, 1] chacun."""
+) -> pd.DataFrame:
+    """Score un echantillon d'etudiants du gold avec les DEUX modeles (abandon + note)."""
     df_gold = pd.read_csv(gold_path, sep=";")
     model = load_model(model_dir / "logistic.joblib")
+    regressor = load_model(model_dir / "regressor.joblib")
     imputer = joblib.load(model_dir / "imputer.joblib")
 
     echantillon = df_gold.sample(n=min(n, len(df_gold)), random_state=seed).reset_index(drop=True)
     echantillon[COLONNES_A_IMPUTER] = imputer.transform(echantillon[COLONNES_A_IMPUTER])
-    proba = predict_proba(model, select_features(echantillon, settings.target_col))
-    return {f"etudiant_{i}": round(float(p), 3) for i, p in enumerate(proba)}
+    X = select_features(echantillon, settings.target_col)
+
+    proba = predict_proba(model, X)
+    notes = regressor.predict(X)
+    seuil = settings.decision_threshold
+
+    # `student_ref` : identifiant synthetique pour cette demo (le gold ne garde pas
+    # `student_id`, retire des features par choix RGPD/anti-fuite). Dans une vraie
+    # integration au SI de l'universite, on joindrait ici le vrai identifiant
+    # etudiant, garde SEULEMENT pour cette table de suivi, jamais comme feature.
+    return pd.DataFrame(
+        {
+            "student_ref": [f"etudiant_{i}" for i in range(len(echantillon))],
+            "proba_abandon": proba.round(3),
+            "decision": ["a_risque" if p >= seuil else "ok" for p in proba],
+            "moyenne_predite": notes.round(2),
+        }
+    )
 
 
 @task
-def publier_rapport(meta: dict, scores: dict[str, float]) -> None:
+def publier_rapport(meta: dict, scores: pd.DataFrame) -> None:
     """Publie un rapport markdown : UI Cloud -> onglet Artifacts du run.
 
     Un "artifact" Prefect = un livrable lisible attache au run (rapport, tableau...).
     Interet : le metier consulte le resultat dans l'UI sans ouvrir de terminal.
     """
-    seuil = settings.decision_threshold
     m = meta["metrics_holdout"]
     lignes = "\n".join(
-        f"| {nom} | {p:.3f} | {'A RISQUE' if p >= seuil else 'ok'} |"
-        for nom, p in sorted(scores.items())
+        f"| {row.student_ref} | {row.proba_abandon:.3f} | {row.moyenne_predite:.2f} | "
+        f"{'A RISQUE' if row.decision == 'a_risque' else 'ok'} |"
+        for row in scores.sort_values("student_ref").itertuples()
     )
     create_markdown_artifact(
         key="rapport-decrochage",  # cle stable : l'UI garde l'historique des versions
@@ -151,10 +174,32 @@ def publier_rapport(meta: dict, scores: dict[str, float]) -> None:
             f"taux d'abandon {m['taux_abandon']:.2%}\n"
             f"- Performance (test) : rappel {m['recall']}, precision {m['precision']}, "
             f"F1 {m['f1']}, AUC {m['roc_auc']}\n"
-            f"- Seuil de decision : {seuil}\n\n"
-            f"| Etudiant (echantillon) | P(abandon) | Statut |\n|---|---|---|\n{lignes}\n"
+            f"- Seuil de decision : {settings.decision_threshold}\n\n"
+            f"| Etudiant (echantillon) | P(abandon) | Note predite | Statut |\n"
+            f"|---|---|---|---|\n{lignes}\n"
         ),
     )
+
+
+@task
+def stocker_scores(scores: pd.DataFrame, meta: dict) -> int:
+    """Ecrit les scores en base PostgreSQL (historique, jamais d'ecrasement) —
+    couche 'orchestration applicative' de l'architecture cible : l'UI metier lira
+    cette table plutot que de rappeler les modeles a chaque consultation."""
+    logger = get_run_logger()
+    if not settings.db_url:
+        logger.warning("DECROCHAGE_DB_URL non definie : scores non persistes en base.")
+        return 0
+
+    df = scores.copy()
+    df["model_version"] = meta["package_version"]
+    df["threshold"] = settings.decision_threshold
+
+    engine = get_engine(settings.db_url)
+    ensure_schema(engine)
+    n = enregistrer_scores(engine, df)
+    logger.info(f"{n} scores ecrits dans PostgreSQL (table `predictions`)")
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +208,8 @@ def publier_rapport(meta: dict, scores: dict[str, float]) -> None:
 
 
 @flow(name="decrochage-pipeline", log_prints=True)  # log_prints : les print() -> logs du run
-def pipeline_decrochage(data_dir: str | None = None) -> dict[str, float]:
-    """Pipeline complet : sources brutes -> gold -> entrainement -> scoring -> rapport.
+def pipeline_decrochage(data_dir: str | None = None) -> pd.DataFrame:
+    """Pipeline complet : sources brutes -> gold -> entrainement -> scoring -> rapport + DB.
 
     `data_dir` est un PARAMETRE de flow : dans l'UI Cloud on peut relancer le
     pipeline sur un autre jeu de donnees sans toucher au code (Deployments -> Run).
@@ -175,8 +220,9 @@ def pipeline_decrochage(data_dir: str | None = None) -> dict[str, float]:
     meta = entrainer_modele(gold_path, settings.model_dir, settings.random_seed)
     scores = scorer_echantillon(gold_path, settings.model_dir)
     publier_rapport(meta, scores)
+    stocker_scores(scores, meta)
 
-    a_risque = [nom for nom, p in scores.items() if p >= settings.decision_threshold]
+    a_risque = scores.loc[scores["decision"] == "a_risque", "student_ref"].tolist()
     print(
         f"{len(scores)} etudiants (echantillon) scores, "
         f"{len(a_risque)} au-dessus du seuil : {a_risque}"

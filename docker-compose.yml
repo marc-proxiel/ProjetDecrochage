@@ -52,6 +52,8 @@ services:                 # 'services' = la liste de tous les conteneurs à lanc
       POSTGRES_USER: decrochage            # Crée l'utilisateur 'decrochage' (doit matcher l'URL de l'api).
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # Mot de passe de cet utilisateur, fourni par le .env.
       POSTGRES_DB: decrochage              # Crée une base nommée 'decrochage' au démarrage.
+    ports: ["5432:5432"]  # publie le port pour un acces DEV depuis l'hote (ex: flows/pipeline.py
+                          #   lance en local, hors conteneur) ; a retirer en prod (acces interne only).
     volumes: ["pgdata:/var/lib/postgresql/data"]
                           # Volume PERSISTANT : on relie le volume nommé 'pgdata' (défini tout en bas)
                           #   au dossier où PostgreSQL stocke ses données. Ainsi, supprimer/recréer

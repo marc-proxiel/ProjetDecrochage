@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     decision_threshold: float = (
         0.5  # seuil proba → décision « alerte »/« ok » (DECROCHAGE_DECISION_THRESHOLD)
     )
+    # --- Stockage batch des scores (couche "orchestration applicative") ---
+    # URL SQLAlchemy vers PostgreSQL ; None = scores non persistes (juste le
+    # rapport Prefect). Ex: postgresql+psycopg://decrochage:motdepasse@localhost:5432/decrochage
+    db_url: str | None = None
 
 
 # On crée UNE instance partagée, importable partout via `from decrochage.config import settings`.
