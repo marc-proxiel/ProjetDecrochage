@@ -3,7 +3,9 @@
     "allow": [
       "PowerShell(.venv\\\\Scripts\\\\pip.exe install -e . --no-deps)",
       "PowerShell(& \".venv\\\\Scripts\\\\pip.exe\" install -e . --no-deps)",
-      "Bash(uv run *)"
+      "Bash(uv run *)",
+      "Read(//c/Users/marc/AppData/Local/Temp/claude/c--Formation-IA-Examen-ProjetDecrochage/70c0dac8-4ad2-4c13-a47b-1c15a6ff41a1/scratchpad/renumber_test/**)",
+      "Bash(uv --project \"c:/Formation IA/Examen/ProjetDecrochage\" run --with nbconvert --with ipykernel jupyter nbconvert --to notebook --execute --output executed_test.ipynb EtudeDecrochageMVA.ipynb)"
     ]
   }
 }
